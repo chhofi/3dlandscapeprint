@@ -1,0 +1,3964 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CityForge 3D | Mapbox Edition</title>
+    
+    <!-- Mapbox GL JS -->
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.0.1/mapbox-gl.css" rel="stylesheet" />
+    
+    <!-- Mapbox Draw -->
+    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css" rel="stylesheet" />
+    
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- JSZip for 3MF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    
+    <!-- Polygon Clipping for boolean operations -->
+    <script src="https://unpkg.com/polygon-clipping@0.15.7/dist/polygon-clipping.umd.min.js"></script>
+    
+    <!-- Earcut for polygon triangulation -->
+    <script src="https://unpkg.com/earcut@2.2.4/dist/earcut.min.js"></script>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-primary: #0a0a0b;
+            --bg-secondary: #131316;
+            --bg-tertiary: #1a1a1f;
+            --accent: #00ff88;
+            --accent-dim: #00ff8822;
+            --text-primary: #ffffff;
+            --text-secondary: #8888a0;
+            --text-muted: #555566;
+            --border: #2a2a35;
+            --danger: #ff4466;
+            --warning: #ffaa00;
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        
+        .app {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            height: 100vh;
+        }
+        
+        /* Header */
+        .header {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 400px;
+            z-index: 100;
+            padding: 16px 24px;
+            background: linear-gradient(180deg, rgba(10,10,11,0.95) 0%, transparent 100%);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 20px;
+            font-weight: 700;
+        }
+        
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--accent);
+            clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+        }
+        
+        .logo span { color: var(--accent); }
+        
+        .badge {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        
+        /* Map */
+        .map-container {
+            position: relative;
+        }
+        
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .mapboxgl-canvas { outline: none; }
+        
+        /* Instructions */
+        .instructions {
+            position: absolute;
+            bottom: 24px;
+            left: 24px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            max-width: 300px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+        }
+        
+        .instructions strong {
+            color: var(--accent);
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            background: var(--bg-secondary);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .sidebar-scroll {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .section {
+            margin-bottom: 24px;
+        }
+        
+        .section-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .section-title::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            background: var(--accent);
+            border-radius: 2px;
+        }
+        
+        /* Search */
+        .search-box {
+            position: relative;
+            margin-bottom: 10px;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 12px 14px 12px 40px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 13px;
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        
+        .search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+        }
+        
+        .quick-btns {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        
+        .quick-btn {
+            padding: 6px 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        
+        .quick-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+        
+        /* Frame presets */
+        .frame-presets {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        
+        .frame-btn {
+            flex: 1;
+            padding: 8px 6px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        
+        .frame-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+        
+        .frame-btn.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+        
+        .frame-size-display {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 10px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--accent);
+        }
+        
+        /* Status */
+        .status {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        
+        .status.loading { border-color: var(--warning); }
+        .status.success { border-color: var(--accent); }
+        .status.error { border-color: var(--danger); }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            flex-shrink: 0;
+        }
+        
+        .status.loading .status-dot { background: var(--warning); animation: pulse 1s infinite; }
+        .status.success .status-dot { background: var(--accent); }
+        .status.error .status-dot { background: var(--danger); }
+        
+        @keyframes pulse { 50% { opacity: 0.4; } }
+        
+        /* Stats */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        
+        .stat {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .stat-value.accent { color: var(--accent); }
+        
+        .stat-label {
+            font-size: 9px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 2px;
+        }
+        
+        /* Layers */
+        .layers {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .layer {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        
+        .layer:hover { border-color: var(--text-muted); }
+        .layer.disabled { opacity: 0.5; }
+        
+        .layer input { display: none; }
+        
+        .layer-color {
+            width: 14px;
+            height: 14px;
+            border-radius: 4px;
+        }
+        
+        .layer-name {
+            flex: 1;
+            font-size: 13px;
+        }
+        
+        .layer-count {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+        
+        .layer-check {
+            width: 18px;
+            height: 18px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+        }
+        
+        .layer input:checked ~ .layer-check {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: var(--bg-primary);
+        }
+        
+        /* Sliders */
+        .slider-row {
+            margin-bottom: 14px;
+        }
+        
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            font-size: 12px;
+        }
+        
+        .slider-value {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent);
+            font-size: 11px;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            background: var(--bg-tertiary);
+            border-radius: 2px;
+            appearance: none;
+            cursor: pointer;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            background: var(--accent);
+            border-radius: 50%;
+        }
+        
+        /* Preview */
+        .preview-box {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            aspect-ratio: 4/3;
+            position: relative;
+        }
+        
+        #preview3d { width: 100%; height: 100%; }
+        
+        .preview-empty {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            font-size: 12px;
+        }
+        
+        .preview-empty.hidden { display: none; }
+        
+        /* Generate */
+        .generate-area {
+            padding: 16px 20px;
+            background: var(--bg-tertiary);
+            border-top: 1px solid var(--border);
+        }
+        
+        .gen-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, var(--accent), #00cc66);
+            border: none;
+            border-radius: 8px;
+            color: var(--bg-primary);
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        
+        .gen-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px var(--accent-dim);
+        }
+        
+        .gen-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--bg-primary);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* Modal */
+        .modal-bg {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s;
+        }
+        
+        .modal-bg.show { opacity: 1; visibility: visible; }
+        
+        .modal {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+            width: 90%;
+            max-width: 380px;
+        }
+        
+        .modal h2 {
+            font-size: 20px;
+            margin-bottom: 8px;
+        }
+        
+        .modal p {
+            color: var(--text-secondary);
+            font-size: 13px;
+            margin-bottom: 16px;
+        }
+        
+        .modal-info {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 16px;
+            font-size: 12px;
+        }
+        
+        .modal-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .modal-row:last-child { border: none; }
+        
+        .modal-row span:last-child {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--accent);
+        }
+        
+        .modal-btns {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .modal-btn {
+            flex: 1;
+            padding: 12px;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+        
+        .modal-btn.secondary {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+        }
+        
+        .modal-btn.primary {
+            background: var(--accent);
+            border: none;
+            color: var(--bg-primary);
+        }
+        
+        /* Responsive */
+        @media (max-width: 800px) {
+            .app { grid-template-columns: 1fr; grid-template-rows: 50vh 1fr; }
+            .header { right: 0; }
+            .sidebar { border-left: none; border-top: 1px solid var(--border); }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <div class="map-container">
+            <div class="header">
+                <div class="logo">
+                    <div class="logo-icon"></div>
+                    City<span>Forge</span>
+                </div>
+                <div class="badge">🗺️ Mapbox Edition</div>
+            </div>
+            <div id="map"></div>
+            <div class="instructions" id="instructions">
+                <strong>Anleitung:</strong> Klicke auf das <strong>⬜ Rechteck-Symbol</strong> oben rechts, dann klicke 2x auf die Karte um einen Bereich auszuwählen.
+            </div>
+        </div>
+        
+        <div class="sidebar">
+            <div class="sidebar-scroll">
+                <div class="section">
+                    <div class="section-title">Standort</div>
+                    <div class="search-box">
+                        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                        </svg>
+                        <input type="text" class="search-input" id="search" placeholder="Stadt suchen...">
+                    </div>
+                    <div class="quick-btns">
+                        <button class="quick-btn" data-lng="6.9603" data-lat="50.9375">Köln</button>
+                        <button class="quick-btn" data-lng="13.4050" data-lat="52.5200">Berlin</button>
+                        <button class="quick-btn" data-lng="11.5820" data-lat="48.1351">München</button>
+                        <button class="quick-btn" data-lng="9.9937" data-lat="53.5511">Hamburg</button>
+                        <button class="quick-btn" data-lng="8.6821" data-lat="50.1109">Frankfurt</button>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">Auswahl</div>
+                    <div class="status" id="status">
+                        <div class="status-dot"></div>
+                        <span>Zeichne einen Bereich auf der Karte</span>
+                    </div>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="stat-value" id="statArea">—</div>
+                            <div class="stat-label">km²</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value accent" id="statBuildings">—</div>
+                            <div class="stat-label">Gebäude</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-value" id="statElevation">—</div>
+                            <div class="stat-label">Höhe Δ</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">Layer</div>
+                    <div class="layers">
+                        <label class="layer">
+                            <input type="checkbox" id="layerBuildings" checked>
+                            <div class="layer-color" style="background:#ff6b6b"></div>
+                            <span class="layer-name">Gebäude</span>
+                            <span class="layer-count" id="countBuildings">0</span>
+                            <div class="layer-check">✓</div>
+                        </label>
+                        <label class="layer">
+                            <input type="checkbox" id="layerRoads" checked>
+                            <div class="layer-color" style="background:#666"></div>
+                            <span class="layer-name">Straßen</span>
+                            <span class="layer-count" id="countRoads">0</span>
+                            <div class="layer-check">✓</div>
+                        </label>
+                        <label class="layer">
+                            <input type="checkbox" id="layerWater" checked>
+                            <div class="layer-color" style="background:#4dabf7"></div>
+                            <span class="layer-name">Wasser</span>
+                            <span class="layer-count" id="countWater">0</span>
+                            <div class="layer-check">✓</div>
+                        </label>
+                        <label class="layer">
+                            <input type="checkbox" id="layerGreen" checked>
+                            <div class="layer-color" style="background:#51cf66"></div>
+                            <span class="layer-name">Grünflächen</span>
+                            <span class="layer-count" id="countGreen">0</span>
+                            <div class="layer-check">✓</div>
+                        </label>
+                        <label class="layer">
+                            <input type="checkbox" id="layerTerrain" checked>
+                            <div class="layer-color" style="background:#a9845b"></div>
+                            <span class="layer-name">Terrain (3D)</span>
+                            <span class="layer-count">Höhendaten</span>
+                            <div class="layer-check">✓</div>
+                        </label>
+                        <label class="layer">
+                            <input type="checkbox" id="flatMode">
+                            <div class="layer-color" style="background:#555"></div>
+                            <span class="layer-name">Flach-Modus (2D)</span>
+                            <span class="layer-count">Ohne Terrain</span>
+                            <div class="layer-check">✓</div>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">Layer-Höhen</div>
+                    <div class="slider-row">
+                        <div class="slider-header">
+                            <span>🏠 Gebäude</span>
+                            <span class="slider-value" id="valHeightBuildings">1.0x</span>
+                        </div>
+                        <input type="range" id="sliderHeightBuildings" min="0.5" max="3" step="0.1" value="1">
+                    </div>
+                    <div class="slider-row">
+                        <div class="slider-header">
+                            <span>🛣️ Straßen</span>
+                            <span class="slider-value" id="valHeightRoads">0.5mm</span>
+                        </div>
+                        <input type="range" id="sliderHeightRoads" min="0.2" max="2" step="0.1" value="0.5">
+                    </div>
+                    <div class="slider-row">
+                        <div class="slider-header">
+                            <span>🌳 Grünflächen</span>
+                            <span class="slider-value" id="valHeightGreen">0.3mm</span>
+                        </div>
+                        <input type="range" id="sliderHeightGreen" min="0.1" max="1" step="0.1" value="0.3">
+                    </div>
+                    <div class="slider-row">
+                        <div class="slider-header">
+                            <span>💧 Wasser</span>
+                            <span class="slider-value" id="valHeightWater">0.2mm</span>
+                        </div>
+                        <input type="range" id="sliderHeightWater" min="0.1" max="1" step="0.1" value="0.2">
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">Basis</div>
+                    <div class="slider-row">
+                        <div class="slider-header">
+                            <span>Basis-Dicke</span>
+                            <span class="slider-value" id="valBase">5mm</span>
+                        </div>
+                        <input type="range" id="sliderBase" min="0.2" max="15" step="0.2" value="5">
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">Auswahl-Rotation</div>
+                    <div class="slider-row">
+                        <div class="slider-header">
+                            <span>🔄 Rotation</span>
+                            <span class="slider-value" id="valRotation">0°</span>
+                        </div>
+                        <input type="range" id="sliderRotation" min="0" max="360" step="1" value="0">
+                    </div>
+                    <div style="font-size:11px;color:#666;margin-top:4px;line-height:1.4;">
+                        Rotiere die Auswahl um den Mittelpunkt
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">Rahmen-Format</div>
+                    <div class="frame-presets">
+                        <button class="frame-btn" data-w="200" data-h="150">20×15</button>
+                        <button class="frame-btn" data-w="150" data-h="200">15×20</button>
+                        <button class="frame-btn" data-w="180" data-h="130">18×13</button>
+                        <button class="frame-btn" data-w="130" data-h="180">13×18</button>
+                        <button class="frame-btn" data-w="150" data-h="100">15×10</button>
+                        <button class="frame-btn" data-w="100" data-h="150">10×15</button>
+                        <button class="frame-btn active" data-w="0" data-h="0">Frei</button>
+                    </div>
+                    <div class="slider-row" id="freeSizeRow">
+                        <div class="slider-header">
+                            <span>Modellgröße (längste Seite)</span>
+                            <span class="slider-value" id="valModelSize">100mm</span>
+                        </div>
+                        <input type="range" id="sliderModelSize" min="50" max="300" step="10" value="100">
+                    </div>
+                    <div class="frame-size-display" id="frameSizeDisplay" style="display:none;">
+                        <span id="frameSizeText">200 × 150 mm</span>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">Rahmen-Rand (Padding)</div>
+                    <div class="slider-row">
+                        <div class="slider-header">
+                            <span>Flacher Rand</span>
+                            <span class="slider-value" id="valPadding">0mm</span>
+                        </div>
+                        <input type="range" id="sliderPadding" min="0" max="20" step="1" value="0">
+                    </div>
+                    <div style="font-size:11px;color:#666;margin-top:4px;line-height:1.4;">
+                        Flacher Bereich am Rand für Bilderrahmen-Montage
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">3D-Druck Optionen</div>
+                    <div class="slider-row">
+                        <div class="slider-header">
+                            <span>Min. Wandstärke</span>
+                            <span class="slider-value" id="valMinWall">0.8mm</span>
+                        </div>
+                        <input type="range" id="sliderMinWall" min="0.4" max="2" step="0.1" value="0.8">
+                    </div>
+                    <label class="layer" style="margin-top:8px;">
+                        <input type="checkbox" id="optMergeAll">
+                        <span class="layer-name">Alles zu einem Mesh vereinen</span>
+                        <div class="layer-check">✓</div>
+                    </label>
+                    <div style="font-size:11px;color:#666;margin-top:10px;line-height:1.4;">
+                        💡 <b>Tipp:</b> 3MF für Bambu Lab Multi-Color Druck. Maße in mm.
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <div class="section-title">3D Vorschau</div>
+                    <div class="preview-box">
+                        <div id="preview3d"></div>
+                        <div class="preview-empty" id="previewEmpty">Bereich auswählen</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="generate-area">
+                <button class="gen-btn" id="generateBtn" disabled>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                    3MF generieren
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal-bg" id="modal">
+        <div class="modal">
+            <h2>🎉 Fertig!</h2>
+            <p>Dein 3D-Modell wurde erstellt.</p>
+            <div class="modal-info" id="modalInfo"></div>
+            <div class="modal-btns">
+                <button class="modal-btn secondary" onclick="closeModal()">Schließen</button>
+                <button class="modal-btn primary" id="downloadBtn">Download</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========== CONFIG ==========
+        const MAPBOX_TOKEN = 'YOUR_MAPBOX_TOKEN_HERE';
+        
+        const COLORS = {
+            buildings: { r: 1.0, g: 0.42, b: 0.42, hex: 0xff6b6b },
+            roads: { r: 0.4, g: 0.4, b: 0.4, hex: 0x666666 },
+            water: { r: 0.3, g: 0.67, b: 0.97, hex: 0x4dabf7 },
+            green: { r: 0.32, g: 0.81, b: 0.4, hex: 0x51cf66 },
+            terrain: { r: 0.66, g: 0.52, b: 0.36, hex: 0xa9845b }
+        };
+        
+        // Sutherland-Hodgman polygon clipping
+        function clipPolygon(polygon, bounds) {
+            const { west, east, south, north } = bounds;
+            
+            const clipEdge = (poly, x1, y1, x2, y2) => {
+                const result = [];
+                const inside = (p) => (x2 - x1) * (p.lat - y1) - (y2 - y1) * (p.lng - x1) >= 0;
+                const intersect = (p1, p2) => {
+                    const dc = { lng: x1 - x2, lat: y1 - y2 };
+                    const dp = { lng: p1.lng - p2.lng, lat: p1.lat - p2.lat };
+                    const n1 = (x1 - p1.lng) * dc.lat - (y1 - p1.lat) * dc.lng;
+                    const n2 = dp.lng * dc.lat - dp.lat * dc.lng;
+                    if (Math.abs(n2) < 1e-10) return p1;
+                    const t = n1 / n2;
+                    return { lng: p1.lng + t * dp.lng, lat: p1.lat + t * dp.lat };
+                };
+                
+                for (let i = 0; i < poly.length; i++) {
+                    const curr = poly[i];
+                    const next = poly[(i + 1) % poly.length];
+                    const currIn = inside(curr);
+                    const nextIn = inside(next);
+                    
+                    if (currIn) result.push(curr);
+                    if (currIn !== nextIn) result.push(intersect(curr, next));
+                }
+                return result;
+            };
+            
+            let result = polygon.slice();
+            result = clipEdge(result, west, south, east, south); // Bottom
+            result = clipEdge(result, east, south, east, north); // Right
+            result = clipEdge(result, east, north, west, north); // Top
+            result = clipEdge(result, west, north, west, south); // Left
+            
+            return result.length >= 3 ? result : null;
+        }
+        
+        // Clip line to bounds
+        function clipLine(coords, bounds) {
+            const { west, east, south, north } = bounds;
+            const result = [];
+            
+            for (const c of coords) {
+                if (c.lng >= west && c.lng <= east && c.lat >= south && c.lat <= north) {
+                    result.push(c);
+                } else if (result.length > 0) {
+                    // End of visible segment, could add intersection point here
+                    break;
+                }
+            }
+            
+            // Simple approach: only keep points inside bounds
+            return coords.filter(c => 
+                c.lng >= west && c.lng <= east && 
+                c.lat >= south && c.lat <= north
+            );
+        }
+        
+        // ========== TERRAIN-FOLLOWING POLYGON TRIANGULATION ==========
+        // Triangulate a polygon with interior grid points for smooth terrain following
+        // ========== BOOLEAN OPERATIONS ==========
+        // Convert our coords format to polygon-clipping format
+        function coordsToRing(coords) {
+            return coords.map(c => [c.lng, c.lat]);
+        }
+        
+        function ringToCoords(ring) {
+            return ring.map(p => ({ lng: p[0], lat: p[1] }));
+        }
+        
+        // Point-in-polygon test (ray casting algorithm)
+        function pointInPolygon(lat, lng, polygon) {
+            let inside = false;
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const xi = polygon[i].lng, yi = polygon[i].lat;
+                const xj = polygon[j].lng, yj = polygon[j].lat;
+                
+                if (((yi > lat) !== (yj > lat)) &&
+                    (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) {
+                    inside = !inside;
+                }
+            }
+            return inside;
+        }
+        
+        // Convert a line with width to a polygon (for roads/waterways)
+        function lineToPolygon(coords, width) {
+            if (coords.length < 2) return null;
+            
+            const left = [], right = [];
+            const halfW = width / 2 / 111000; // Convert meters to degrees (approximate)
+            
+            for (let i = 0; i < coords.length; i++) {
+                const curr = coords[i];
+                const next = coords[Math.min(i + 1, coords.length - 1)];
+                const prev = coords[Math.max(i - 1, 0)];
+                
+                const dx = next.lng - prev.lng;
+                const dy = next.lat - prev.lat;
+                const len = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+                
+                // Perpendicular offset
+                const px = -dy / len * halfW;
+                const py = dx / len * halfW;
+                
+                left.push({ lng: curr.lng + px, lat: curr.lat + py });
+                right.push({ lng: curr.lng - px, lat: curr.lat - py });
+            }
+            
+            // Create closed polygon: left side forward, right side backward
+            const polygon = [...left, ...right.reverse()];
+            polygon.push(polygon[0]); // Close it
+            return polygon;
+        }
+        
+        // Subtract an array of polygons from a single polygon
+        function subtractPolygons(subject, clippers) {
+            if (!subject || subject.length < 3) return [];
+            if (!clippers || clippers.length === 0) return [subject];
+            
+            try {
+                // Convert to polygon-clipping format
+                let subjectPoly = [[coordsToRing(subject)]];
+                
+                for (const clipper of clippers) {
+                    if (!clipper || clipper.length < 3) continue;
+                    
+                    const clipperPoly = [[coordsToRing(clipper)]];
+                    const result = polygonClipping.difference(subjectPoly, clipperPoly);
+                    
+                    if (!result || result.length === 0) {
+                        return []; // Completely subtracted
+                    }
+                    subjectPoly = result;
+                }
+                
+                // Convert back to our format - may result in multiple polygons
+                const results = [];
+                for (const poly of subjectPoly) {
+                    if (poly.length > 0 && poly[0].length >= 3) {
+                        results.push(ringToCoords(poly[0]));
+                    }
+                }
+                return results;
+            } catch (e) {
+                console.warn('Boolean operation failed:', e);
+                return [subject]; // Return original on error
+            }
+        }
+        
+        // Union multiple polygons into non-overlapping set
+        function unionPolygons(polygonList) {
+            if (!polygonList || polygonList.length === 0) return [];
+            
+            try {
+                // Convert all polygons to polygon-clipping format
+                const polys = polygonList
+                    .filter(p => p && p.length >= 3)
+                    .map(p => [coordsToRing(p)]);
+                
+                if (polys.length === 0) return [];
+                if (polys.length === 1) return [polygonList[0]];
+                
+                // Union all polygons together
+                let result = polys[0];
+                for (let i = 1; i < polys.length; i++) {
+                    try {
+                        result = polygonClipping.union(result, polys[i]);
+                        if (!result || result.length === 0) {
+                            result = polys[i]; // Fallback
+                        }
+                    } catch (e) {
+                        // Skip problematic polygon
+                        console.warn('Union failed for polygon', i);
+                    }
+                }
+                
+                // Convert back to our format
+                const results = [];
+                for (const poly of result) {
+                    if (poly.length > 0 && poly[0].length >= 3) {
+                        results.push(ringToCoords(poly[0]));
+                    }
+                }
+                return results;
+            } catch (e) {
+                console.warn('Union operation failed:', e);
+                return polygonList; // Return originals on error
+            }
+        }
+        
+        // Process all layers to remove intersections
+        function processLayerIntersections() {
+            console.log('Processing layer intersections...');
+            
+            // Collect all higher-priority shapes for subtraction
+            // Priority: Buildings > Roads > Water > Green
+            
+            // 1. Convert buildings to polygon list
+            const buildingPolys = modelData.buildings
+                .filter(b => b.coords && b.coords.length >= 3)
+                .map(b => b.coords);
+            
+            // 2. Convert roads to polygons
+            const roadPolys = modelData.roads
+                .filter(r => r.coords && r.coords.length >= 2)
+                .map(r => lineToPolygon(r.coords, r.width))
+                .filter(p => p !== null);
+            
+            // 3. Convert waterways to polygons
+            const waterwayPolys = modelData.waterways
+                .filter(w => w.coords && w.coords.length >= 2)
+                .map(w => lineToPolygon(w.coords, w.width))
+                .filter(p => p !== null);
+            
+            // 4. Water areas as-is
+            const waterAreaPolys = modelData.waterAreas
+                .filter(w => w.coords && w.coords.length >= 3)
+                .map(w => w.coords);
+            
+            // All water combined
+            const allWaterPolys = [...waterAreaPolys, ...waterwayPolys];
+            
+            // Now subtract from lower priority layers:
+            
+            // Green areas: First MERGE overlapping green areas, then subtract buildings/roads/water
+            console.log('Merging overlapping green areas...');
+            const greenPolys = modelData.greenAreas
+                .filter(g => g.coords && g.coords.length >= 3)
+                .map(g => g.coords);
+            const mergedGreenPolys = unionPolygons(greenPolys);
+            console.log('Green areas merged:', greenPolys.length, '->', mergedGreenPolys.length);
+            
+            // Now subtract buildings, roads, and water from merged green
+            const allAboveGreen = [...buildingPolys, ...roadPolys, ...allWaterPolys];
+            const newGreenAreas = [];
+            for (const greenCoords of mergedGreenPolys) {
+                if (!greenCoords || greenCoords.length < 3) continue;
+                const results = subtractPolygons(greenCoords, allAboveGreen);
+                for (const r of results) {
+                    if (r.length >= 3) {
+                        newGreenAreas.push({ coords: r });
+                    }
+                }
+            }
+            modelData.greenAreas = newGreenAreas;
+            
+            // Water areas: First MERGE overlapping water areas, then subtract buildings/roads
+            console.log('Merging overlapping water areas...');
+            const waterPolys = modelData.waterAreas
+                .filter(w => w.coords && w.coords.length >= 3)
+                .map(w => w.coords);
+            const mergedWaterPolys = unionPolygons(waterPolys);
+            console.log('Water areas merged:', waterPolys.length, '->', mergedWaterPolys.length);
+            
+            const aboveWater = [...buildingPolys, ...roadPolys];
+            const newWaterAreas = [];
+            for (const waterCoords of mergedWaterPolys) {
+                if (!waterCoords || waterCoords.length < 3) continue;
+                const results = subtractPolygons(waterCoords, aboveWater);
+                for (const r of results) {
+                    if (r.length >= 3) {
+                        newWaterAreas.push({ coords: r });
+                    }
+                }
+            }
+            modelData.waterAreas = newWaterAreas;
+            
+            // Note: Roads, waterways, and greenways (lines) are harder to subtract from
+            // For now, we keep them as-is since buildings will render on top anyway
+            
+            console.log('Layer intersections processed:', {
+                greenAreas: modelData.greenAreas.length,
+                waterAreas: modelData.waterAreas.length
+            });
+        }
+        
+        // ========== STATE ==========
+        let map, draw;
+        let selectedBounds = null;
+        let modelData = { buildings: [], roads: [], waterAreas: [], waterways: [], greenAreas: [], greenways: [] };
+        let elevationGrid = [];
+        let minElev = 0, maxElev = 0;
+        let generatedFiles = {};
+        let scene, camera, renderer;
+        
+        // ========== INIT ==========
+        function init() {
+            // Check if mapboxgl loaded
+            if (typeof mapboxgl === 'undefined') {
+                console.error('Mapbox GL not loaded! Retrying in 1 second...');
+                setTimeout(init, 1000);
+                return;
+            }
+            initMap();
+            init3D();
+            initUI();
+        }
+        
+        function initMap() {
+            mapboxgl.accessToken = MAPBOX_TOKEN;
+            
+            map = new mapboxgl.Map({
+                container: 'map',
+                style: 'mapbox://styles/mapbox/dark-v11',
+                center: [10.4515, 51.1657],
+                zoom: 5,
+                pitch: 0
+            });
+            
+            map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+            
+            // Get current frame aspect ratio (width/height)
+            function getFrameAspectRatio() {
+                const activeBtn = document.querySelector('.frame-btn.active');
+                const w = parseInt(activeBtn?.dataset.w || 0);
+                const h = parseInt(activeBtn?.dataset.h || 0);
+                if (w > 0 && h > 0) {
+                    return w / h;  // e.g. 200/150 = 1.333
+                }
+                return null;  // Free mode - no constraint
+            }
+            
+            // Calculate constrained end point based on aspect ratio
+            function constrainToAspectRatio(start, end, aspectRatio) {
+                if (!aspectRatio) return end;
+                
+                const dLng = end[0] - start[0];
+                const dLat = end[1] - start[1];
+                
+                // Account for latitude distortion
+                const centerLat = (start[1] + end[1]) / 2;
+                const cosLat = Math.cos(centerLat * Math.PI / 180);
+                
+                // Convert to approximate meters for aspect calculation
+                const widthM = Math.abs(dLng) * 111000 * cosLat;
+                const heightM = Math.abs(dLat) * 111000;
+                
+                const currentRatio = widthM / heightM;
+                
+                let newDLng = dLng;
+                let newDLat = dLat;
+                
+                if (currentRatio > aspectRatio) {
+                    // Too wide - constrain width
+                    const targetWidthM = heightM * aspectRatio;
+                    newDLng = Math.sign(dLng) * (targetWidthM / (111000 * cosLat));
+                } else {
+                    // Too tall - constrain height
+                    const targetHeightM = widthM / aspectRatio;
+                    newDLat = Math.sign(dLat) * (targetHeightM / 111000);
+                }
+                
+                return [start[0] + newDLng, start[1] + newDLat];
+            }
+            
+            // Draw control with rectangle mode
+            const DrawRectangle = {
+                onSetup: function() {
+                    const rectangle = this.newFeature({
+                        type: 'Feature',
+                        properties: {},
+                        geometry: { type: 'Polygon', coordinates: [[]] }
+                    });
+                    this.addFeature(rectangle);
+                    this.clearSelectedFeatures();
+                    this.setActionableState({ trash: true });
+                    return { rectangle, startPoint: null };
+                },
+                onClick: function(state, e) {
+                    if (!state.startPoint) {
+                        state.startPoint = [e.lngLat.lng, e.lngLat.lat];
+                    } else {
+                        const start = state.startPoint;
+                        let end = [e.lngLat.lng, e.lngLat.lat];
+                        
+                        // Constrain to aspect ratio if frame preset is selected
+                        const aspectRatio = getFrameAspectRatio();
+                        if (aspectRatio) {
+                            end = constrainToAspectRatio(start, end, aspectRatio);
+                        }
+                        
+                        state.rectangle.setCoordinates([[
+                            start,
+                            [end[0], start[1]],
+                            end,
+                            [start[0], end[1]],
+                            start
+                        ]]);
+                        this.map.fire('draw.create', { features: [state.rectangle.toGeoJSON()] });
+                        return this.changeMode('simple_select', { featureIds: [state.rectangle.id] });
+                    }
+                },
+                onMouseMove: function(state, e) {
+                    if (state.startPoint) {
+                        const start = state.startPoint;
+                        let end = [e.lngLat.lng, e.lngLat.lat];
+                        
+                        // Constrain to aspect ratio if frame preset is selected
+                        const aspectRatio = getFrameAspectRatio();
+                        if (aspectRatio) {
+                            end = constrainToAspectRatio(start, end, aspectRatio);
+                        }
+                        
+                        state.rectangle.setCoordinates([[
+                            start,
+                            [end[0], start[1]],
+                            end,
+                            [start[0], end[1]],
+                            start
+                        ]]);
+                    }
+                },
+                onKeyUp: function(state, e) {
+                    if (e.keyCode === 27) return this.changeMode('simple_select');
+                },
+                toDisplayFeatures: function(state, geojson, display) {
+                    display(geojson);
+                },
+                onTrash: function(state) {
+                    this.deleteFeature([state.rectangle.id], { silent: true });
+                    this.changeMode('simple_select');
+                },
+                onStop: function(state) {
+                    this.updateUIClasses({ mouse: 'none' });
+                }
+            };
+            
+            draw = new MapboxDraw({
+                displayControlsDefault: false,
+                controls: { trash: true },
+                modes: Object.assign({}, MapboxDraw.modes, { draw_rectangle: DrawRectangle }),
+                defaultMode: 'simple_select'
+            });
+            
+            map.addControl(draw, 'top-right');
+            
+            // Add custom rectangle button
+            const drawBtn = document.createElement('button');
+            drawBtn.className = 'mapbox-gl-draw_ctrl-draw-btn';
+            drawBtn.title = 'Rechteck zeichnen';
+            drawBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0a0a0b" stroke-width="2.5">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+            </svg>`;
+            drawBtn.style.cssText = 'background:#00ff88;border:none;border-radius:4px;padding:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;width:36px;height:36px;';
+            drawBtn.onclick = () => {
+                draw.deleteAll();
+                draw.changeMode('draw_rectangle');
+            };
+            
+            setTimeout(() => {
+                const controls = document.querySelector('.mapboxgl-ctrl-top-right');
+                if (controls) {
+                    const container = document.createElement('div');
+                    container.className = 'mapboxgl-ctrl mapboxgl-ctrl-group';
+                    container.appendChild(drawBtn);
+                    controls.insertBefore(container, controls.firstChild);
+                }
+            }, 500);
+            
+            map.on('load', () => {
+                // Enable 3D terrain
+                map.addSource('mapbox-dem', {
+                    type: 'raster-dem',
+                    url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+                    tileSize: 512,
+                    maxzoom: 14
+                });
+                map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
+                
+                // Add building layer
+                map.addLayer({
+                    id: '3d-buildings',
+                    source: 'composite',
+                    'source-layer': 'building',
+                    type: 'fill-extrusion',
+                    minzoom: 14,
+                    paint: {
+                        'fill-extrusion-color': '#ff6b6b',
+                        'fill-extrusion-height': ['get', 'height'],
+                        'fill-extrusion-base': ['get', 'min_height'],
+                        'fill-extrusion-opacity': 0.8
+                    }
+                });
+            });
+            
+            map.on('draw.create', onDrawCreate);
+            map.on('draw.delete', onDrawDelete);
+            map.on('draw.update', onDrawCreate);
+        }
+        
+        async function onDrawCreate(e) {
+            const features = draw.getAll().features;
+            if (features.length === 0) return;
+            
+            const coords = features[0].geometry.coordinates[0];
+            const lngs = coords.map(c => c[0]);
+            const lats = coords.map(c => c[1]);
+            
+            selectedBounds = {
+                west: Math.min(...lngs),
+                east: Math.max(...lngs),
+                south: Math.min(...lats),
+                north: Math.max(...lats)
+            };
+            
+            document.getElementById('instructions').style.display = 'none';
+            await loadAllData();
+        }
+        
+        function onDrawDelete() {
+            selectedBounds = null;
+            modelData = { buildings: [], roads: [], waterAreas: [], waterways: [], greenAreas: [], greenways: [] };
+            setStatus('Zeichne einen Bereich auf der Karte', '');
+            document.getElementById('statArea').textContent = '—';
+            document.getElementById('statBuildings').textContent = '—';
+            document.getElementById('statElevation').textContent = '—';
+            updateCounts();
+            document.getElementById('generateBtn').disabled = true;
+            document.getElementById('previewEmpty').classList.remove('hidden');
+        }
+        
+        // ========== LOAD DATA ==========
+        async function loadAllData() {
+            if (!selectedBounds) return;
+            
+            const area = calculateArea();
+            document.getElementById('statArea').textContent = area.toFixed(2);
+            
+            setStatus('Lade OSM-Daten (Overpass API)...', 'loading');
+            
+            try {
+                // Load vector tiles data from OSM
+                await loadMapboxData();
+                
+                // Load elevation - wait for terrain tiles to load first
+                setStatus('Lade Höhendaten...', 'loading');
+                await waitForTerrainReady();
+                await loadElevation();
+                
+                updateCounts();
+                document.getElementById('statBuildings').textContent = modelData.buildings.length;
+                document.getElementById('statElevation').textContent = 
+                    `${Math.round(maxElev - minElev)}m`;
+                
+                setStatus(`${modelData.buildings.length} Gebäude, ${modelData.roads.length} Straßen`, 'success');
+                document.getElementById('generateBtn').disabled = false;
+                
+                update3DPreview();
+                
+            } catch (err) {
+                console.error(err);
+                setStatus('Fehler: ' + err.message, 'error');
+            }
+        }
+        
+        async function loadMapboxData() {
+            const { west, east, south, north } = selectedBounds;
+            
+            // Check area size - Overpass has limits
+            const areaKm2 = (east - west) * 111 * Math.cos((north + south) / 2 * Math.PI / 180) * (north - south) * 111;
+            console.log('Selected area:', areaKm2.toFixed(2), 'km²');
+            
+            if (areaKm2 > 5) {
+                alert('Der ausgewählte Bereich ist zu groß (' + areaKm2.toFixed(1) + ' km²). Bitte wähle einen kleineren Bereich (max. 5 km²).');
+                return;
+            }
+            
+            // Single query for ALL data - ensures perfect alignment
+            // Same approach as maps3d.io - all features share the same nodes
+            const bbox = south.toFixed(7) + ',' + west.toFixed(7) + ',' + north.toFixed(7) + ',' + east.toFixed(7);
+            
+            // Query everything in one go with full geometry
+            const query = '[out:json][timeout:120];(' +
+                'way["building"](' + bbox + ');' +
+                'way["highway"](' + bbox + ');' +
+                'way["natural"="water"](' + bbox + ');' +
+                'way["waterway"](' + bbox + ');' +
+                'way["landuse"](' + bbox + ');' +
+                'way["leisure"~"park|garden|pitch"](' + bbox + ');' +
+                'way["barrier"="hedge"](' + bbox + ');' +
+                'way["natural"="tree_row"](' + bbox + ');' +
+                ');out geom;';
+            
+            console.log('Querying OSM with geom output for perfect alignment...');
+            
+            // Try multiple Overpass endpoints
+            const endpoints = [
+                'https://overpass.kumi.systems/api/interpreter',
+                'https://overpass-api.de/api/interpreter',
+                'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
+            ];
+            
+            let data = null;
+            
+            for (const endpoint of endpoints) {
+                try {
+                    console.log('Trying endpoint:', endpoint);
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(function() { controller.abort(); }, 60000);
+                    
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: 'data=' + encodeURIComponent(query),
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (response.ok) {
+                        data = await response.json();
+                        console.log('Success with endpoint:', endpoint);
+                        break;
+                    } else {
+                        console.warn('Endpoint failed:', endpoint, 'HTTP', response.status);
+                    }
+                } catch (err) {
+                    console.warn('Endpoint error:', endpoint, err.message);
+                }
+            }
+            
+            if (!data) {
+                alert('Fehler beim Laden der OSM-Daten. Bitte versuche einen kleineren Bereich oder warte kurz.');
+                return;
+            }
+            
+            console.log('OSM data received:', data.elements.length, 'elements');
+            
+            // Process ways - using 'out geom' means coordinates are directly in the geometry
+            modelData.buildings = [];
+            modelData.roads = [];
+            modelData.waterAreas = [];
+            modelData.waterways = [];
+            modelData.greenAreas = [];
+            modelData.greenways = [];
+            
+            // Waterway widths based on type
+            function getWaterwayWidth(type) {
+                const widths = {
+                    'river': 20,
+                    'canal': 12,
+                    'stream': 5,
+                    'drain': 3,
+                    'ditch': 2
+                };
+                return widths[type] || 8;
+            }
+            
+            // Greenway widths based on type
+            function getGreenwayWidth(tags) {
+                if (tags.barrier === 'hedge') return 2;
+                if (tags.natural === 'tree_row') return 4;
+                if (tags.landuse === 'grass') return 3;
+                return 3;
+            }
+            
+            // Check if a way is closed (first coord == last coord)
+            function isClosedWay(coords) {
+                if (coords.length < 3) return false;
+                const first = coords[0];
+                const last = coords[coords.length - 1];
+                // Check if first and last are approximately the same
+                const threshold = 0.00001; // About 1 meter
+                return Math.abs(first.lat - last.lat) < threshold && 
+                       Math.abs(first.lng - last.lng) < threshold;
+            }
+            
+            data.elements.forEach(function(el) {
+                if (el.type !== 'way') return;
+                if (!el.geometry || el.geometry.length < 2) return;
+                
+                // Coordinates come directly from geometry (exact OSM coordinates)
+                const coords = el.geometry.map(function(g) {
+                    return { lat: g.lat, lng: g.lon };
+                });
+                
+                const tags = el.tags || {};
+                const isClosed = isClosedWay(coords);
+                
+                // Buildings - must be closed polygons
+                if (tags.building) {
+                    if (isClosed && coords.length >= 3) {
+                        var height = 10;
+                        if (tags.height) {
+                            var h = parseFloat(tags.height);
+                            if (!isNaN(h)) height = h;
+                        } else if (tags['building:levels']) {
+                            var levels = parseFloat(tags['building:levels']);
+                            if (!isNaN(levels)) height = levels * 3;
+                        }
+                        modelData.buildings.push({ coords: coords, height: height });
+                    }
+                }
+                // Roads - always lines
+                else if (tags.highway) {
+                    var roadClass = tags.highway;
+                    var width = getRoadWidth(roadClass);
+                    modelData.roads.push({ coords: coords, width: width, class: roadClass });
+                }
+                // Water areas (lakes, ponds) - only closed polygons
+                else if (tags.natural === 'water') {
+                    if (isClosed && coords.length >= 3) {
+                        modelData.waterAreas.push({ coords: coords });
+                    }
+                }
+                // Waterways (rivers, streams, canals) - always lines
+                else if (tags.waterway) {
+                    if (coords.length >= 2) {
+                        var width = getWaterwayWidth(tags.waterway);
+                        modelData.waterways.push({ coords: coords, width: width, type: tags.waterway });
+                    }
+                }
+                // Green - separate closed (areas) and open (ways/paths)
+                else if (tags.landuse) {
+                    var greenTypes = ['grass', 'forest', 'meadow', 'park', 'garden', 'farmland', 'village_green', 'recreation_ground'];
+                    if (greenTypes.indexOf(tags.landuse) >= 0) {
+                        if (isClosed && coords.length >= 3) {
+                            modelData.greenAreas.push({ coords: coords });
+                        } else if (!isClosed && coords.length >= 2) {
+                            // Linear green feature (like a grass strip along a path)
+                            var width = getGreenwayWidth(tags);
+                            modelData.greenways.push({ coords: coords, width: width });
+                        }
+                    }
+                }
+                else if (tags.leisure) {
+                    var leisureTypes = ['park', 'garden', 'pitch', 'playground'];
+                    if (leisureTypes.indexOf(tags.leisure) >= 0 && isClosed && coords.length >= 3) {
+                        modelData.greenAreas.push({ coords: coords });
+                    }
+                }
+                // Hedges and tree rows as greenways
+                else if (tags.barrier === 'hedge' || tags.natural === 'tree_row') {
+                    if (coords.length >= 2) {
+                        var width = getGreenwayWidth(tags);
+                        modelData.greenways.push({ coords: coords, width: width });
+                    }
+                }
+            });
+            
+            console.log('Parsed OSM data:', {
+                buildings: modelData.buildings.length,
+                roads: modelData.roads.length,
+                waterAreas: modelData.waterAreas.length,
+                waterways: modelData.waterways.length,
+                greenAreas: modelData.greenAreas.length,
+                greenways: modelData.greenways.length
+            });
+            
+            // Process boolean operations to remove overlapping areas
+            processLayerIntersections();
+            
+            // Debug: Check first coordinates
+            if (modelData.buildings.length > 0 && modelData.roads.length > 0) {
+                console.log('Sample building coord:', modelData.buildings[0].coords[0]);
+                console.log('Sample road coord:', modelData.roads[0].coords[0]);
+            }
+        }
+        
+        function getRoadWidth(roadClass) {
+            const widths = {
+                motorway: 14, motorway_link: 8, trunk: 12, trunk_link: 7,
+                primary: 10, primary_link: 6, secondary: 8, secondary_link: 5,
+                tertiary: 7, tertiary_link: 4, residential: 6, living_street: 5,
+                unclassified: 5, service: 4, track: 3, pedestrian: 4,
+                footway: 2, path: 2, cycleway: 2, steps: 2, bridleway: 2
+            };
+            return widths[roadClass] || 5;
+        }
+        
+        // Wait for terrain tiles to be fully loaded
+        function waitForTerrainReady() {
+            return new Promise(resolve => {
+                map.once('idle', resolve);
+            });
+        }
+        
+        async function loadElevation() {
+            const { west, east, south, north } = selectedBounds;
+            const gridSize = 32;  // Higher resolution for better terrain
+            
+            elevationGrid = [];
+            const elevations = [];
+            
+            // Use Mapbox Terrain-RGB tiles
+            for (let i = 0; i <= gridSize; i++) {
+                elevationGrid[i] = [];
+                for (let j = 0; j <= gridSize; j++) {
+                    const lat = south + (north - south) * (i / gridSize);
+                    const lng = west + (east - west) * (j / gridSize);
+                    
+                    // Query elevation from terrain
+                    const elev = map.queryTerrainElevation([lng, lat]) || 0;
+                    elevationGrid[i][j] = elev;
+                    elevations.push(elev);
+                }
+            }
+            
+            minElev = Math.min(...elevations);
+            maxElev = Math.max(...elevations);
+            
+            console.log('Elevation range:', minElev, '-', maxElev, 'meters');
+        }
+        
+        function getElevationAt(lat, lng) {
+            if (!elevationGrid.length) return 0;
+            
+            const { west, east, south, north } = selectedBounds;
+            const gridSize = elevationGrid.length - 1;
+            
+            const normLat = Math.max(0, Math.min(1, (lat - south) / (north - south)));
+            const normLng = Math.max(0, Math.min(1, (lng - west) / (east - west)));
+            
+            const gi = Math.min(gridSize - 1, Math.floor(normLat * gridSize));
+            const gj = Math.min(gridSize - 1, Math.floor(normLng * gridSize));
+            
+            const fi = normLat * gridSize - gi;
+            const fj = normLng * gridSize - gj;
+            
+            const e00 = elevationGrid[gi]?.[gj] || 0;
+            const e01 = elevationGrid[gi]?.[gj + 1] || e00;
+            const e10 = elevationGrid[gi + 1]?.[gj] || e00;
+            const e11 = elevationGrid[gi + 1]?.[gj + 1] || e10;
+            
+            return e00 * (1 - fi) * (1 - fj) + e01 * (1 - fi) * fj + 
+                   e10 * fi * (1 - fj) + e11 * fi * fj - minElev;
+        }
+        
+        // ========== 3D PREVIEW ==========
+        function init3D() {
+            const container = document.getElementById('preview3d');
+            const w = container.clientWidth, h = container.clientHeight;
+            
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a1f);
+            
+            camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 1000);
+            camera.position.set(60, 60, 60);
+            camera.lookAt(0, 0, 0);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(w, h);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+            
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const light = new THREE.DirectionalLight(0xffffff, 0.8);
+            light.position.set(50, 100, 50);
+            scene.add(light);
+            
+            // Orbit
+            let drag = false, mx = 0, my = 0;
+            let theta = Math.PI / 4, phi = Math.PI / 4, radius = 70;
+            
+            const updateCam = () => {
+                camera.position.set(
+                    radius * Math.sin(phi) * Math.cos(theta),
+                    radius * Math.cos(phi),
+                    radius * Math.sin(phi) * Math.sin(theta)
+                );
+                camera.lookAt(0, 0, 0);
+            };
+            
+            container.addEventListener('mousedown', e => { drag = true; mx = e.clientX; my = e.clientY; });
+            container.addEventListener('mousemove', e => {
+                if (!drag) return;
+                theta -= (e.clientX - mx) * 0.01;
+                phi = Math.max(0.1, Math.min(1.5, phi - (e.clientY - my) * 0.01));
+                mx = e.clientX; my = e.clientY;
+                updateCam();
+            });
+            container.addEventListener('mouseup', () => drag = false);
+            container.addEventListener('mouseleave', () => drag = false);
+            container.addEventListener('wheel', e => {
+                e.preventDefault();
+                radius = Math.max(20, Math.min(150, radius + e.deltaY * 0.1));
+                updateCam();
+            });
+            
+            updateCam();
+            
+            (function animate() {
+                requestAnimationFrame(animate);
+                renderer.render(scene, camera);
+            })();
+        }
+        
+        function update3DPreview() {
+            // Clear
+            while (scene.children.length > 2) scene.remove(scene.children[2]);
+            document.getElementById('previewEmpty').classList.add('hidden');
+            
+            if (!selectedBounds) return;
+            
+            const { west, east, south, north } = selectedBounds;
+            const centerLng = (west + east) / 2;
+            const centerLat = (south + north) / 2;
+            const scale = 40;
+            
+            // Individual layer heights
+            const heightBuildings = parseFloat(document.getElementById('sliderHeightBuildings').value);
+            const heightRoads = parseFloat(document.getElementById('sliderHeightRoads').value);
+            const heightGreen = parseFloat(document.getElementById('sliderHeightGreen').value);
+            const heightWater = parseFloat(document.getElementById('sliderHeightWater').value);
+            
+            const baseTop = 0;
+            const baseBottom = -parseFloat(document.getElementById('sliderBase').value) / 10;
+            const flatMode = document.getElementById('flatMode').checked;
+            const layerTerrainChecked = document.getElementById('layerTerrain').checked;
+            
+            // Simple linear transformation - same for ALL elements
+            const metersPerDeg = 111000;
+            const cosLat = Math.cos(centerLat * Math.PI / 180);
+            
+            function toLocal(lat, lng) {
+                return {
+                    x: (lng - centerLng) * metersPerDeg * cosLat / 1000 * scale,
+                    z: (lat - centerLat) * metersPerDeg / 1000 * scale
+                };
+            }
+            
+            // Get elevation in scene units for preview
+            function elevPreview(lat, lng) {
+                if (flatMode || !layerTerrainChecked) return 0;
+                return getElevationAt(lat, lng) / 1000 * scale; // meters to scene units
+            }
+            
+            // Model dimensions
+            const modelWidth = (east - west) * metersPerDeg * cosLat / 1000 * scale;
+            const modelDepth = (north - south) * metersPerDeg / 1000 * scale;
+            
+            // Base/Terrain mesh
+            if (!flatMode && layerTerrainChecked) {
+                // Terrain mesh with elevation
+                const gs = 32;
+                const hw = modelWidth / 2, hd = modelDepth / 2;
+                const cw = modelWidth / gs, cd = modelDepth / gs;
+                
+                const vertices = [];
+                const indices = [];
+                
+                // Top surface vertices with elevation
+                for (let i = 0; i <= gs; i++) {
+                    for (let j = 0; j <= gs; j++) {
+                        const x = -hw + j * cw;
+                        const z = -hd + i * cd;
+                        // Reverse lat because ExtrudeGeometry + rotateX(-PI/2) flips Z axis
+                        const lat = north - (north - south) * (i / gs);
+                        const lng = west + (east - west) * (j / gs);
+                        const y = elevPreview(lat, lng);
+                        vertices.push(x, y, z);
+                    }
+                }
+                
+                // Bottom surface vertices (flat)
+                const btmOffset = (gs + 1) * (gs + 1);
+                for (let i = 0; i <= gs; i++) {
+                    for (let j = 0; j <= gs; j++) {
+                        const x = -hw + j * cw;
+                        const z = -hd + i * cd;
+                        vertices.push(x, baseBottom, z);
+                    }
+                }
+                
+                // Top surface faces
+                for (let i = 0; i < gs; i++) {
+                    for (let j = 0; j < gs; j++) {
+                        const idx = i * (gs + 1) + j;
+                        indices.push(idx, idx + 1, idx + gs + 2);
+                        indices.push(idx, idx + gs + 2, idx + gs + 1);
+                    }
+                }
+                
+                // Bottom surface faces (reverse winding)
+                for (let i = 0; i < gs; i++) {
+                    for (let j = 0; j < gs; j++) {
+                        const idx = btmOffset + i * (gs + 1) + j;
+                        indices.push(idx, idx + gs + 2, idx + 1);
+                        indices.push(idx, idx + gs + 1, idx + gs + 2);
+                    }
+                }
+                
+                // Side walls
+                // Front (i = 0)
+                for (let j = 0; j < gs; j++) {
+                    const t = j, b = btmOffset + j;
+                    indices.push(b, b + 1, t + 1);
+                    indices.push(b, t + 1, t);
+                }
+                // Back (i = gs)
+                for (let j = 0; j < gs; j++) {
+                    const t = gs * (gs + 1) + j, b = btmOffset + gs * (gs + 1) + j;
+                    indices.push(t, t + 1, b + 1);
+                    indices.push(t, b + 1, b);
+                }
+                // Left (j = 0)
+                for (let i = 0; i < gs; i++) {
+                    const t = i * (gs + 1), b = btmOffset + i * (gs + 1);
+                    indices.push(t, t + gs + 1, b + gs + 1);
+                    indices.push(t, b + gs + 1, b);
+                }
+                // Right (j = gs)
+                for (let i = 0; i < gs; i++) {
+                    const t = i * (gs + 1) + gs, b = btmOffset + i * (gs + 1) + gs;
+                    indices.push(b, b + gs + 1, t + gs + 1);
+                    indices.push(b, t + gs + 1, t);
+                }
+                
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                geo.setIndex(indices);
+                geo.computeVertexNormals();
+                
+                scene.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+                    color: 0x666655,
+                    side: THREE.DoubleSide
+                })));
+            } else {
+                // Flat base plate
+                const geo = new THREE.BoxGeometry(modelWidth, Math.abs(baseBottom - baseTop), modelDepth);
+                geo.translate(0, (baseTop + baseBottom) / 2, 0);
+                scene.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+                    color: 0x444444,
+                    side: THREE.DoubleSide
+                })));
+            }
+            
+            // Green areas - terrain-following with densified boundary and proper triangulation
+            if (document.getElementById('layerGreen').checked) {
+                modelData.greenAreas.forEach(g => {
+                    if (!g.coords || g.coords.length < 3) return;
+                    
+                    const clipped = clipPolygon(g.coords, selectedBounds);
+                    if (!clipped || clipped.length < 3) return;
+                    
+                    // === STEP 1: Densify the boundary (add points every ~10m) ===
+                    const targetSpacingM = 10;
+                    const densified = [];
+                    
+                    for (let i = 0; i < clipped.length; i++) {
+                        const curr = clipped[i];
+                        const next = clipped[(i + 1) % clipped.length];
+                        
+                        densified.push(curr);
+                        
+                        // Calculate distance between points in meters
+                        const dLat = (next.lat - curr.lat) * metersPerDeg;
+                        const dLng = (next.lng - curr.lng) * metersPerDeg * cosLat;
+                        const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+                        
+                        // Add intermediate points if segment is longer than target spacing
+                        if (dist > targetSpacingM) {
+                            const numSegments = Math.ceil(dist / targetSpacingM);
+                            for (let j = 1; j < numSegments; j++) {
+                                const t = j / numSegments;
+                                densified.push({
+                                    lat: curr.lat + t * (next.lat - curr.lat),
+                                    lng: curr.lng + t * (next.lng - curr.lng)
+                                });
+                            }
+                        }
+                    }
+                    
+                    if (densified.length < 3) return;
+                    
+                    // === STEP 2: Create flat coords for earcut (ring, not point cloud) ===
+                    const flatCoords = [];
+                    densified.forEach(c => {
+                        const p = toLocal(c.lat, c.lng);
+                        flatCoords.push(p.x, -p.z);
+                    });
+                    
+                    // === STEP 3: Triangulate the ring with earcut ===
+                    let triangleIndices;
+                    try {
+                        triangleIndices = earcut(flatCoords);
+                    } catch (e) {
+                        return;
+                    }
+                    if (!triangleIndices || triangleIndices.length < 3) return;
+                    
+                    // === STEP 4: Build vertices with lat/lng for later subdivision ===
+                    let vertices = densified.map(c => {
+                        const p = toLocal(c.lat, c.lng);
+                        return { x: p.x, z: -p.z, lat: c.lat, lng: c.lng };
+                    });
+                    let triangles = [];
+                    for (let i = 0; i < triangleIndices.length; i += 3) {
+                        triangles.push([triangleIndices[i], triangleIndices[i+1], triangleIndices[i+2]]);
+                    }
+                    
+                    // === STEP 5: Subdivide mesh 2 times for smoother terrain following ===
+                    for (let iter = 0; iter < 2; iter++) {
+                        const newTriangles = [];
+                        const edgeMidpoints = new Map();
+                        
+                        function getEdgeKey(i1, i2) {
+                            return i1 < i2 ? `${i1}-${i2}` : `${i2}-${i1}`;
+                        }
+                        
+                        function getMidpoint(i1, i2) {
+                            const key = getEdgeKey(i1, i2);
+                            if (edgeMidpoints.has(key)) return edgeMidpoints.get(key);
+                            
+                            const v1 = vertices[i1], v2 = vertices[i2];
+                            const midIdx = vertices.length;
+                            vertices.push({
+                                x: (v1.x + v2.x) / 2,
+                                z: (v1.z + v2.z) / 2,
+                                lat: (v1.lat + v2.lat) / 2,
+                                lng: (v1.lng + v2.lng) / 2
+                            });
+                            edgeMidpoints.set(key, midIdx);
+                            return midIdx;
+                        }
+                        
+                        triangles.forEach(tri => {
+                            const [i0, i1, i2] = tri;
+                            const m01 = getMidpoint(i0, i1);
+                            const m12 = getMidpoint(i1, i2);
+                            const m20 = getMidpoint(i2, i0);
+                            
+                            newTriangles.push([i0, m01, m20]);
+                            newTriangles.push([m01, i1, m12]);
+                            newTriangles.push([m20, m12, i2]);
+                            newTriangles.push([m01, m12, m20]);
+                        });
+                        
+                        triangles = newTriangles;
+                    }
+                    
+                    // === STEP 6: Sample elevation for each vertex ===
+                    const topVerts = [];
+                    const bottomVerts = [];
+                    vertices.forEach(v => {
+                        const y = elevPreview(v.lat, v.lng);
+                        topVerts.push(v.x, y + heightGreen + 0.02, v.z);  // +0.02 polygonOffset
+                        bottomVerts.push(v.x, y, v.z);
+                    });
+                    
+                    // === STEP 7: Build geometry ===
+                    const allVerts = [...topVerts, ...bottomVerts];
+                    const indices = [];
+                    const offset = vertices.length;
+                    
+                    // Top faces
+                    triangles.forEach(tri => {
+                        indices.push(tri[0], tri[1], tri[2]);
+                    });
+                    
+                    // Bottom faces (reversed winding)
+                    triangles.forEach(tri => {
+                        indices.push(offset + tri[0], offset + tri[2], offset + tri[1]);
+                    });
+                    
+                    // Side walls from original densified boundary
+                    for (let i = 0; i < densified.length; i++) {
+                        const curr = i;
+                        const next = (i + 1) % densified.length;
+                        indices.push(curr, next, offset + next);
+                        indices.push(curr, offset + next, offset + curr);
+                    }
+                    
+                    const geo = new THREE.BufferGeometry();
+                    geo.setAttribute('position', new THREE.Float32BufferAttribute(allVerts, 3));
+                    geo.setIndex(indices);
+                    geo.computeVertexNormals();
+                    
+                    scene.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+                        color: COLORS.green.hex,
+                        side: THREE.DoubleSide
+                    })));
+                });
+                
+                // Linear greenways (hedges, tree rows, grass strips) - ribbons like roads
+                modelData.greenways.slice(0, 100).forEach(function(g) {
+                    if (g.coords.length < 2) return;
+                    
+                    const clipped = clipLine(g.coords, selectedBounds);
+                    if (clipped.length < 2) return;
+                    
+                    const halfW = g.width / 2 / 1000 * scale;
+                    const topVerts = [], bottomVerts = [];
+                    
+                    clipped.forEach(function(c, i) {
+                        const curr = c;
+                        const next = clipped[i + 1] || curr;
+                        const prev = clipped[i - 1] || curr;
+                        
+                        const p = toLocal(curr.lat, curr.lng);
+                        const pn = toLocal(next.lat, next.lng);
+                        const pp = toLocal(prev.lat, prev.lng);
+                        
+                        const yElev = elevPreview(curr.lat, curr.lng);
+                        
+                        const dx = pn.x - pp.x, dz = pn.z - pp.z;
+                        const len = Math.sqrt(dx * dx + dz * dz) || 1;
+                        const px = -dz / len * halfW, pz = dx / len * halfW;
+                        
+                        const topY = yElev + heightGreen;
+                        const bottomY = yElev;
+                        
+                        const z = -p.z;
+                        const pz2 = -pz;
+                        
+                        topVerts.push(
+                            new THREE.Vector3(p.x - px, topY, z - pz2),
+                            new THREE.Vector3(p.x + px, topY, z + pz2)
+                        );
+                        bottomVerts.push(
+                            new THREE.Vector3(p.x - px, bottomY, z - pz2),
+                            new THREE.Vector3(p.x + px, bottomY, z + pz2)
+                        );
+                    });
+                    
+                    if (topVerts.length >= 4) {
+                        const geo = new THREE.BufferGeometry();
+                        const vertices = [];
+                        const indices = [];
+                        
+                        topVerts.forEach(v => vertices.push(v.x, v.y, v.z));
+                        bottomVerts.forEach(v => vertices.push(v.x, v.y, v.z));
+                        
+                        const n = topVerts.length;
+                        
+                        for (let i = 0; i < n / 2 - 1; i++) {
+                            const idx = i * 2;
+                            indices.push(idx, idx + 2, idx + 3, idx, idx + 3, idx + 1);
+                        }
+                        
+                        for (let i = 0; i < n / 2 - 1; i++) {
+                            const idx = n + i * 2;
+                            indices.push(idx, idx + 1, idx + 3, idx, idx + 3, idx + 2);
+                        }
+                        
+                        for (let i = 0; i < n / 2 - 1; i++) {
+                            const t = i * 2;
+                            const b = n + i * 2;
+                            indices.push(t, b, b + 2, t, b + 2, t + 2);
+                            indices.push(t + 1, t + 3, b + 3, t + 1, b + 3, b + 1);
+                        }
+                        
+                        indices.push(0, 1, n + 1, 0, n + 1, n);
+                        indices.push(n - 2, n + n - 2, n + n - 1, n - 2, n + n - 1, n - 1);
+                        
+                        geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                        geo.setIndex(indices);
+                        geo.computeVertexNormals();
+                        
+                        scene.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+                            color: COLORS.green.hex,
+                            side: THREE.DoubleSide
+                        })));
+                    }
+                });
+            }
+            
+            // Roads - extrude UP from terrain elevation
+            if (document.getElementById('layerRoads').checked) {
+                modelData.roads.slice(0, 300).forEach(function(r) {
+                    if (r.coords.length < 2) return;
+                    
+                    // Clip to bounds
+                    const clipped = clipLine(r.coords, selectedBounds);
+                    if (clipped.length < 2) return;
+                    
+                    // Road width in same units as toLocal (meters / 1000 * scale)
+                    const halfW = r.width / 2 / 1000 * scale;
+                    
+                    const topVerts = [], bottomVerts = [];
+                    
+                    clipped.forEach(function(c, i) {
+                        const curr = c;
+                        const next = clipped[i + 1] || curr;
+                        const prev = clipped[i - 1] || curr;
+                        
+                        const p = toLocal(curr.lat, curr.lng);
+                        const pn = toLocal(next.lat, next.lng);
+                        const pp = toLocal(prev.lat, prev.lng);
+                        
+                        // Per-vertex elevation
+                        const yElev = elevPreview(curr.lat, curr.lng);
+                        
+                        const dx = pn.x - pp.x, dz = pn.z - pp.z;
+                        const len = Math.sqrt(dx * dx + dz * dz) || 1;
+                        const px = -dz / len * halfW, pz = dx / len * halfW;
+                        
+                        const topY = yElev + heightRoads;
+                        const bottomY = yElev;
+                        
+                        // Mirror Z to match extruded geometries (which are rotated by -PI/2)
+                        const z = -p.z;
+                        const pz2 = -pz;
+                        
+                        topVerts.push(
+                            new THREE.Vector3(p.x - px, topY, z - pz2),
+                            new THREE.Vector3(p.x + px, topY, z + pz2)
+                        );
+                        bottomVerts.push(
+                            new THREE.Vector3(p.x - px, bottomY, z - pz2),
+                            new THREE.Vector3(p.x + px, bottomY, z + pz2)
+                        );
+                    });
+                    
+                    if (topVerts.length >= 4) {
+                        const geo = new THREE.BufferGeometry();
+                        const vertices = [];
+                        const indices = [];
+                        
+                        topVerts.forEach(v => vertices.push(v.x, v.y, v.z));
+                        bottomVerts.forEach(v => vertices.push(v.x, v.y, v.z));
+                        
+                        const n = topVerts.length;
+                        
+                        // Top surface
+                        for (let i = 0; i < n / 2 - 1; i++) {
+                            const idx = i * 2;
+                            indices.push(idx, idx + 2, idx + 3, idx, idx + 3, idx + 1);
+                        }
+                        
+                        // Bottom surface
+                        for (let i = 0; i < n / 2 - 1; i++) {
+                            const idx = n + i * 2;
+                            indices.push(idx, idx + 1, idx + 3, idx, idx + 3, idx + 2);
+                        }
+                        
+                        // Side walls
+                        for (let i = 0; i < n / 2 - 1; i++) {
+                            const t = i * 2;
+                            const b = n + i * 2;
+                            indices.push(t, b, b + 2, t, b + 2, t + 2);
+                            indices.push(t + 1, t + 3, b + 3, t + 1, b + 3, b + 1);
+                        }
+                        
+                        // End caps
+                        indices.push(0, 1, n + 1, 0, n + 1, n);
+                        indices.push(n - 2, n + n - 2, n + n - 1, n - 2, n + n - 1, n - 1);
+                        
+                        geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                        geo.setIndex(indices);
+                        geo.computeVertexNormals();
+                        
+                        scene.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+                            color: COLORS.roads.hex,
+                            side: THREE.DoubleSide
+                        })));
+                    }
+                });
+            }
+            
+            // Water Areas (lakes, ponds) - terrain-following with densified boundary
+            if (document.getElementById('layerWater').checked) {
+                modelData.waterAreas.forEach(w => {
+                    if (!w.coords || w.coords.length < 3) return;
+                    
+                    const clipped = clipPolygon(w.coords, selectedBounds);
+                    if (!clipped || clipped.length < 3) return;
+                    
+                    // === STEP 1: Densify the boundary (add points every ~10m) ===
+                    const targetSpacingM = 10;
+                    const densified = [];
+                    
+                    for (let i = 0; i < clipped.length; i++) {
+                        const curr = clipped[i];
+                        const next = clipped[(i + 1) % clipped.length];
+                        
+                        densified.push(curr);
+                        
+                        const dLat = (next.lat - curr.lat) * metersPerDeg;
+                        const dLng = (next.lng - curr.lng) * metersPerDeg * cosLat;
+                        const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+                        
+                        if (dist > targetSpacingM) {
+                            const numSegments = Math.ceil(dist / targetSpacingM);
+                            for (let j = 1; j < numSegments; j++) {
+                                const t = j / numSegments;
+                                densified.push({
+                                    lat: curr.lat + t * (next.lat - curr.lat),
+                                    lng: curr.lng + t * (next.lng - curr.lng)
+                                });
+                            }
+                        }
+                    }
+                    
+                    if (densified.length < 3) return;
+                    
+                    // === STEP 2: Create flat coords for earcut (ring) ===
+                    const flatCoords = [];
+                    densified.forEach(c => {
+                        const p = toLocal(c.lat, c.lng);
+                        flatCoords.push(p.x, -p.z);
+                    });
+                    
+                    // === STEP 3: Triangulate the ring with earcut ===
+                    let triangleIndices;
+                    try {
+                        triangleIndices = earcut(flatCoords);
+                    } catch (e) {
+                        return;
+                    }
+                    if (!triangleIndices || triangleIndices.length < 3) return;
+                    
+                    // === STEP 4: Build vertices with lat/lng ===
+                    let vertices = densified.map(c => {
+                        const p = toLocal(c.lat, c.lng);
+                        return { x: p.x, z: -p.z, lat: c.lat, lng: c.lng };
+                    });
+                    let triangles = [];
+                    for (let i = 0; i < triangleIndices.length; i += 3) {
+                        triangles.push([triangleIndices[i], triangleIndices[i+1], triangleIndices[i+2]]);
+                    }
+                    
+                    // === STEP 5: Subdivide mesh 2 times ===
+                    for (let iter = 0; iter < 2; iter++) {
+                        const newTriangles = [];
+                        const edgeMidpoints = new Map();
+                        
+                        function getEdgeKey(i1, i2) {
+                            return i1 < i2 ? `${i1}-${i2}` : `${i2}-${i1}`;
+                        }
+                        
+                        function getMidpoint(i1, i2) {
+                            const key = getEdgeKey(i1, i2);
+                            if (edgeMidpoints.has(key)) return edgeMidpoints.get(key);
+                            
+                            const v1 = vertices[i1], v2 = vertices[i2];
+                            const midIdx = vertices.length;
+                            vertices.push({
+                                x: (v1.x + v2.x) / 2,
+                                z: (v1.z + v2.z) / 2,
+                                lat: (v1.lat + v2.lat) / 2,
+                                lng: (v1.lng + v2.lng) / 2
+                            });
+                            edgeMidpoints.set(key, midIdx);
+                            return midIdx;
+                        }
+                        
+                        triangles.forEach(tri => {
+                            const [i0, i1, i2] = tri;
+                            const m01 = getMidpoint(i0, i1);
+                            const m12 = getMidpoint(i1, i2);
+                            const m20 = getMidpoint(i2, i0);
+                            
+                            newTriangles.push([i0, m01, m20]);
+                            newTriangles.push([m01, i1, m12]);
+                            newTriangles.push([m20, m12, i2]);
+                            newTriangles.push([m01, m12, m20]);
+                        });
+                        
+                        triangles = newTriangles;
+                    }
+                    
+                    // === STEP 6: Sample elevation for each vertex ===
+                    const topVerts = [];
+                    const bottomVerts = [];
+                    vertices.forEach(v => {
+                        const y = elevPreview(v.lat, v.lng);
+                        topVerts.push(v.x, y + heightWater + 0.02, v.z);
+                        bottomVerts.push(v.x, y, v.z);
+                    });
+                    
+                    // === STEP 7: Build geometry ===
+                    const allVerts = [...topVerts, ...bottomVerts];
+                    const indices = [];
+                    const offset = vertices.length;
+                    
+                    triangles.forEach(tri => {
+                        indices.push(tri[0], tri[1], tri[2]);
+                    });
+                    
+                    triangles.forEach(tri => {
+                        indices.push(offset + tri[0], offset + tri[2], offset + tri[1]);
+                    });
+                    
+                    for (let i = 0; i < densified.length; i++) {
+                        const curr = i;
+                        const next = (i + 1) % densified.length;
+                        indices.push(curr, next, offset + next);
+                        indices.push(curr, offset + next, offset + curr);
+                    }
+                    
+                    const geo = new THREE.BufferGeometry();
+                    geo.setAttribute('position', new THREE.Float32BufferAttribute(allVerts, 3));
+                    geo.setIndex(indices);
+                    geo.computeVertexNormals();
+                    
+                    scene.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+                        color: COLORS.water.hex,
+                        side: THREE.DoubleSide
+                    })));
+                });
+                
+                // Waterways (rivers, streams) - ribbons with per-vertex elevation
+                modelData.waterways.slice(0, 100).forEach(function(w) {
+                    if (w.coords.length < 2) return;
+                    
+                    // Clip to bounds
+                    const clipped = clipLine(w.coords, selectedBounds);
+                    if (clipped.length < 2) return;
+                    
+                    // Waterway width
+                    const halfW = w.width / 2 / 1000 * scale;
+                    
+                    const topVerts = [], bottomVerts = [];
+                    
+                    clipped.forEach(function(c, i) {
+                        const curr = c;
+                        const next = clipped[i + 1] || curr;
+                        const prev = clipped[i - 1] || curr;
+                        
+                        const p = toLocal(curr.lat, curr.lng);
+                        const pn = toLocal(next.lat, next.lng);
+                        const pp = toLocal(prev.lat, prev.lng);
+                        
+                        // Per-vertex elevation
+                        const yElev = elevPreview(curr.lat, curr.lng);
+                        
+                        const dx = pn.x - pp.x, dz = pn.z - pp.z;
+                        const len = Math.sqrt(dx * dx + dz * dz) || 1;
+                        const px = -dz / len * halfW, pz = dx / len * halfW;
+                        
+                        const topY = yElev + heightWater;
+                        const bottomY = yElev;
+                        
+                        const z = -p.z;
+                        const pz2 = -pz;
+                        
+                        topVerts.push(
+                            new THREE.Vector3(p.x - px, topY, z - pz2),
+                            new THREE.Vector3(p.x + px, topY, z + pz2)
+                        );
+                        bottomVerts.push(
+                            new THREE.Vector3(p.x - px, bottomY, z - pz2),
+                            new THREE.Vector3(p.x + px, bottomY, z + pz2)
+                        );
+                    });
+                    
+                    if (topVerts.length >= 4) {
+                        const geo = new THREE.BufferGeometry();
+                        const vertices = [];
+                        const indices = [];
+                        
+                        topVerts.forEach(v => vertices.push(v.x, v.y, v.z));
+                        bottomVerts.forEach(v => vertices.push(v.x, v.y, v.z));
+                        
+                        const n = topVerts.length;
+                        
+                        // Top surface
+                        for (let i = 0; i < n / 2 - 1; i++) {
+                            const idx = i * 2;
+                            indices.push(idx, idx + 2, idx + 3, idx, idx + 3, idx + 1);
+                        }
+                        
+                        // Bottom surface
+                        for (let i = 0; i < n / 2 - 1; i++) {
+                            const idx = n + i * 2;
+                            indices.push(idx, idx + 1, idx + 3, idx, idx + 3, idx + 2);
+                        }
+                        
+                        // Side walls
+                        for (let i = 0; i < n / 2 - 1; i++) {
+                            const t = i * 2;
+                            const b = n + i * 2;
+                            indices.push(t, b, b + 2, t, b + 2, t + 2);
+                            indices.push(t + 1, t + 3, b + 3, t + 1, b + 3, b + 1);
+                        }
+                        
+                        // End caps
+                        indices.push(0, 1, n + 1, 0, n + 1, n);
+                        indices.push(n - 2, n + n - 2, n + n - 1, n - 2, n + n - 1, n - 1);
+                        
+                        geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                        geo.setIndex(indices);
+                        geo.computeVertexNormals();
+                        
+                        scene.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+                            color: COLORS.water.hex,
+                            side: THREE.DoubleSide
+                        })));
+                    }
+                });
+            }
+            
+            // Buildings - extrude UP from terrain elevation
+            if (document.getElementById('layerBuildings').checked) {
+                modelData.buildings.slice(0, 500).forEach(b => {
+                    if (b.coords.length < 3) return;
+                    
+                    // Clip to bounds
+                    const clipped = clipPolygon(b.coords, selectedBounds);
+                    if (!clipped || clipped.length < 3) return;
+                    
+                    // Use MAXIMUM elevation so building sits on top of terrain
+                    const maxElev = Math.max(...clipped.map(c => elevPreview(c.lat, c.lng)));
+                    
+                    const shape = new THREE.Shape();
+                    clipped.forEach((c, i) => {
+                        const p = toLocal(c.lat, c.lng);
+                        if (i === 0) shape.moveTo(p.x, p.z);
+                        else shape.lineTo(p.x, p.z);
+                    });
+                    
+                    const buildingHeight = b.height / 1000 * scale * heightBuildings;
+                    
+                    const geo = new THREE.ExtrudeGeometry(shape, {
+                        depth: buildingHeight,
+                        bevelEnabled: false
+                    });
+                    geo.rotateX(-Math.PI / 2);
+                    geo.translate(0, maxElev, 0);  // Lift by terrain elevation
+                    
+                    scene.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+                        color: COLORS.buildings.hex
+                    })));
+                });
+            }
+        }
+        
+        // ========== GENERATE 3MF (Bambu Lab Multi-Color) ==========
+        async function generate3MF() {
+            const { west, east, south, north } = selectedBounds;
+            const centerLng = (west + east) / 2;
+            const centerLat = (south + north) / 2;
+            
+            // Individual layer heights
+            const heightBuildings = parseFloat(document.getElementById('sliderHeightBuildings').value);
+            const heightRoads = parseFloat(document.getElementById('sliderHeightRoads').value);
+            const heightGreen = parseFloat(document.getElementById('sliderHeightGreen').value);
+            const heightWater = parseFloat(document.getElementById('sliderHeightWater').value);
+            
+            const baseThickness = parseFloat(document.getElementById('sliderBase').value);
+            const sliderModelSize = parseFloat(document.getElementById('sliderModelSize').value);
+            const minWallMm = parseFloat(document.getElementById('sliderMinWall').value);
+            const paddingMm = parseFloat(document.getElementById('sliderPadding').value);
+            
+            // Check for fixed frame size
+            const activeFrameBtn = document.querySelector('.frame-btn.active');
+            const frameW = parseInt(activeFrameBtn?.dataset.w || 0);
+            const frameH = parseInt(activeFrameBtn?.dataset.h || 0);
+            
+            const metersPerDeg = 111000;
+            const cosLat = Math.cos(centerLat * Math.PI / 180);
+            const realWidthM = (east - west) * metersPerDeg * cosLat;
+            const realDepthM = (north - south) * metersPerDeg;
+            
+            let width, depth, sf;
+            
+            if (frameW > 0 && frameH > 0) {
+                // Fixed frame size - fit selection into frame
+                width = frameW;
+                depth = frameH;
+                // Scale to fit, maintaining aspect ratio
+                const scaleW = frameW / realWidthM;
+                const scaleH = frameH / realDepthM;
+                sf = Math.min(scaleW, scaleH);  // Fit inside frame
+            } else {
+                // Free mode - scale to longest side
+                const longestSideM = Math.max(realWidthM, realDepthM);
+                sf = sliderModelSize / longestSideM;
+                width = realWidthM * sf;
+                depth = realDepthM * sf;
+            }
+            
+            // Content area (inside padding)
+            const contentWidth = width - 2 * paddingMm;
+            const contentDepth = depth - 2 * paddingMm;
+            
+            // Recalculate sf for content area if padding is used
+            let contentSf = sf;
+            if (paddingMm > 0) {
+                const contentScaleW = contentWidth / realWidthM;
+                const contentScaleH = contentDepth / realDepthM;
+                contentSf = Math.min(contentScaleW, contentScaleH);
+            }
+            
+            function toLocal(lat, lng) {
+                return {
+                    x: (lng - centerLng) * metersPerDeg * cosLat * contentSf,
+                    z: (lat - centerLat) * metersPerDeg * contentSf
+                };
+            }
+            
+            // Get elevation in mm for a given lat/lng
+            const flatMode = document.getElementById('flatMode').checked;
+            const terrainEnabled = document.getElementById('layerTerrain').checked;
+            
+            function elevMm(lat, lng) {
+                if (flatMode || !terrainEnabled) return 0;
+                return getElevationAt(lat, lng) * contentSf; // meters to mm
+            }
+            
+            // Use full frame dimensions for base, content dimensions for features
+            const baseTop = 0;
+            const baseBottom = -baseThickness;
+            
+            // Manifold mesh class with vertex deduplication
+            class ManifoldMesh {
+                constructor() {
+                    this.vertices = [];
+                    this.triangles = [];
+                    this.vertexMap = new Map();
+                }
+                
+                getVertexIndex(x, y, z) {
+                    const key = `${x.toFixed(5)},${y.toFixed(5)},${z.toFixed(5)}`;
+                    if (this.vertexMap.has(key)) {
+                        return this.vertexMap.get(key);
+                    }
+                    const idx = this.vertices.length / 3;
+                    this.vertices.push(x, y, z);
+                    this.vertexMap.set(key, idx);
+                    return idx;
+                }
+                
+                addTriangle(v1, v2, v3) {
+                    const i1 = this.getVertexIndex(v1[0], v1[1], v1[2]);
+                    const i2 = this.getVertexIndex(v2[0], v2[1], v2[2]);
+                    const i3 = this.getVertexIndex(v3[0], v3[1], v3[2]);
+                    if (i1 !== i2 && i2 !== i3 && i1 !== i3) {
+                        this.triangles.push(i1, i2, i3);
+                    }
+                }
+                
+                addQuad(v1, v2, v3, v4) {
+                    this.addTriangle(v1, v2, v3);
+                    this.addTriangle(v1, v3, v4);
+                }
+                
+                isEmpty() {
+                    return this.triangles.length === 0;
+                }
+            }
+            
+            // Helper to clean polygon rings (remove duplicate first/last and consecutive duplicates)
+            function nearlySame2D(a, b, eps = 1e-10) {
+                return Math.abs(a[0] - b[0]) < eps && Math.abs(a[1] - b[1]) < eps;
+            }
+            
+            function cleanRing2D(ring) {
+                if (!ring || ring.length < 3) return [];
+                // Remove duplicate last equals first
+                if (nearlySame2D(ring[0], ring[ring.length - 1])) ring = ring.slice(0, -1);
+                // Remove consecutive duplicates
+                const out = [];
+                for (let i = 0; i < ring.length; i++) {
+                    const p = ring[i];
+                    if (out.length === 0 || !nearlySame2D(out[out.length - 1], p)) out.push(p);
+                }
+                // Again ensure not closed by duplicate
+                if (out.length >= 3 && nearlySame2D(out[0], out[out.length - 1])) out.pop();
+                return out;
+            }
+            
+            // SEPARATE mesh for each layer (for Bambu multicolor)
+            const meshes = {
+                base: new ManifoldMesh(),
+                buildings: new ManifoldMesh(),
+                roads: new ManifoldMesh(),
+                green: new ManifoldMesh(),
+                water: new ManifoldMesh()
+            };
+            
+            // Full frame dimensions (including padding)
+            const hw = width / 2, hd = depth / 2;
+            // Content area dimensions (without padding)
+            const chw = contentWidth / 2, chd = contentDepth / 2;
+            
+            // Point-in-polygon test (ray casting)
+            function pointInPolygon(lat, lng, coords) {
+                if (!coords || coords.length < 3) return false;
+                let inside = false;
+                for (let i = 0, j = coords.length - 1; i < coords.length; j = i++) {
+                    const xi = coords[i].lng, yi = coords[i].lat;
+                    const xj = coords[j].lng, yj = coords[j].lat;
+                    if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) {
+                        inside = !inside;
+                    }
+                }
+                return inside;
+            }
+            
+            // Check if point is in ANY polygon of an array
+            function pointInAnyPolygon(lat, lng, polygonArray) {
+                for (const p of polygonArray) {
+                    if (p.coords && pointInPolygon(lat, lng, p.coords)) return true;
+                }
+                return false;
+            }
+            
+            // ===== BASE/TERRAIN =====
+            const gs = 32;  // Grid size for terrain - shared by all layers
+            const cw = contentWidth / gs, cd = contentDepth / gs;
+            
+            // Build unified grid with lat/lng and terrain height (for content area only)
+            const terrainGrid = [];
+            for (let i = 0; i <= gs; i++) {
+                terrainGrid[i] = [];
+                for (let j = 0; j <= gs; j++) {
+                    const x = -chw + j * cw;
+                    const z = -chd + i * cd;
+                    const lat = north - (north - south) * (i / gs);
+                    const lng = west + (east - west) * (j / gs);
+                    const y = baseTop + elevMm(lat, lng);
+                    terrainGrid[i][j] = { x, y, z, lat, lng, isWater: false };
+                }
+            }
+            
+            // Build combined water polygon for boolean operations
+            // Format for polygon-clipping: [[[x,y], [x,y], ...], ...]
+            let waterPolygonsForClipping = [];
+            
+            if (document.getElementById('layerWater').checked) {
+                // Collect all water area polygons
+                modelData.waterAreas.forEach(w => {
+                    if (w.coords && w.coords.length >= 3) {
+                        const ring = w.coords.map(c => [c.lng, c.lat]);
+                        // Close the ring if needed
+                        if (ring[0][0] !== ring[ring.length-1][0] || ring[0][1] !== ring[ring.length-1][1]) {
+                            ring.push([...ring[0]]);
+                        }
+                        waterPolygonsForClipping.push([ring]);
+                    }
+                });
+                
+                // Convert waterways to polygons (buffer the line) - use LARGE buffer for cutting
+                modelData.waterways.forEach(w => {
+                    if (!w.coords || w.coords.length < 2) return;
+                    
+                    // Use larger buffer for boolean cutting (2x the visual width)
+                    const halfWidthDeg = (w.width || 10) * 2.0 / 2 / 111000;
+                    const coords = w.coords;
+                    const n = coords.length;
+                    const left = [], right = [];
+                    
+                    for (let i = 0; i < n; i++) {
+                        const curr = coords[i];
+                        const next = coords[Math.min(i + 1, n - 1)];
+                        const prev = coords[Math.max(i - 1, 0)];
+                        
+                        const dx = (next.lng - prev.lng) * cosLat;
+                        const dy = next.lat - prev.lat;
+                        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                        
+                        // Perpendicular offset
+                        const px = -dy / len * halfWidthDeg;
+                        const py = dx / len * halfWidthDeg / cosLat;
+                        
+                        left.push([curr.lng - px, curr.lat - py]);
+                        right.push([curr.lng + px, curr.lat + py]);
+                    }
+                    
+                    // Create closed polygon: left forward + right backward
+                    const ring = [...left, ...right.reverse()];
+                    ring.push([...ring[0]]); // close
+                    waterPolygonsForClipping.push([ring]);
+                });
+                
+                // Mark terrain grid points in water (for reference, but don't flatten)
+                for (let i = 0; i <= gs; i++) {
+                    for (let j = 0; j <= gs; j++) {
+                        const pt = terrainGrid[i][j];
+                        
+                        // Check water areas
+                        for (const w of modelData.waterAreas) {
+                            if (w.coords && pointInPolygon(pt.lat, pt.lng, w.coords)) {
+                                pt.isWater = true;
+                                // Don't flatten - water will follow the terrain
+                                break;
+                            }
+                        }
+                        
+                        if (pt.isWater) continue;
+                        
+                        // Check waterways (use larger check radius for cutting)
+                        for (const w of modelData.waterways) {
+                            if (!w.coords || w.coords.length < 2) continue;
+                            
+                            const riverHalfWidthDeg = (w.width || 10) * 2.0 / 2 / 111000;
+                            
+                            for (let k = 0; k < w.coords.length - 1; k++) {
+                                const c1 = w.coords[k], c2 = w.coords[k + 1];
+                                
+                                const dx = (c2.lng - c1.lng) * cosLat;
+                                const dy = c2.lat - c1.lat;
+                                const len2 = dx * dx + dy * dy;
+                                if (len2 < 1e-12) continue;
+                                
+                                const ptDx = (pt.lng - c1.lng) * cosLat;
+                                const ptDy = pt.lat - c1.lat;
+                                
+                                let t = (ptDx * dx + ptDy * dy) / len2;
+                                t = Math.max(0, Math.min(1, t));
+                                
+                                const distDx = ptDx - dx * t;
+                                const distDy = ptDy - dy * t;
+                                const distDeg = Math.sqrt(distDx * distDx / (cosLat * cosLat) + distDy * distDy);
+                                
+                                if (distDeg < riverHalfWidthDeg) {
+                                    pt.isWater = true;
+                                    // Don't flatten - water will follow the terrain
+                                    break;
+                                }
+                            }
+                            if (pt.isWater) break;
+                        }
+                    }
+                }
+            }
+            
+            // Helper: subtract water from a polygon using polygon-clipping
+            function subtractWaterFromPolygon(coords) {
+                if (waterPolygonsForClipping.length === 0) return [coords];
+                
+                // Convert to polygon-clipping format
+                const ring = coords.map(c => [c.lng, c.lat]);
+                if (ring[0][0] !== ring[ring.length-1][0] || ring[0][1] !== ring[ring.length-1][1]) {
+                    ring.push([...ring[0]]);
+                }
+                const subject = [[ring]];
+                
+                try {
+                    // Subtract all water polygons
+                    let result = subject;
+                    for (const waterPoly of waterPolygonsForClipping) {
+                        result = polygonClipping.difference(result, [waterPoly]);
+                        if (!result || result.length === 0) return [];
+                    }
+                    
+                    // Convert back to our format - may return multiple polygons
+                    const outputPolygons = [];
+                    for (const multiPoly of result) {
+                        for (const ring of multiPoly) {
+                            const polyCoords = ring.map(p => ({ lat: p[1], lng: p[0] }));
+                            // Remove closing point if present
+                            if (polyCoords.length > 1) {
+                                const first = polyCoords[0], last = polyCoords[polyCoords.length - 1];
+                                if (Math.abs(first.lat - last.lat) < 1e-10 && Math.abs(first.lng - last.lng) < 1e-10) {
+                                    polyCoords.pop();
+                                }
+                            }
+                            if (polyCoords.length >= 3) {
+                                outputPolygons.push(polyCoords);
+                            }
+                        }
+                    }
+                    return outputPolygons;
+                } catch (e) {
+                    console.warn('Boolean subtraction failed:', e);
+                    return [coords]; // Return original on error
+                }
+            }
+            
+            // === BUILD BASE WITH PADDING ===
+            if (paddingMm > 0) {
+                // With padding: flat outer ring + terrain/flat center
+                
+                // Bottom surface (full frame size)
+                meshes.base.addQuad(
+                    [-hw, baseBottom, -hd],
+                    [-hw, baseBottom, hd],
+                    [hw, baseBottom, hd],
+                    [hw, baseBottom, -hd]
+                );
+                
+                // Flat padding ring on top (at baseTop level)
+                // Front strip
+                meshes.base.addQuad(
+                    [-hw, baseTop, -hd],
+                    [hw, baseTop, -hd],
+                    [hw, baseTop, -chd],
+                    [-hw, baseTop, -chd]
+                );
+                // Back strip  
+                meshes.base.addQuad(
+                    [-hw, baseTop, chd],
+                    [hw, baseTop, chd],
+                    [hw, baseTop, hd],
+                    [-hw, baseTop, hd]
+                );
+                // Left strip (between front and back)
+                meshes.base.addQuad(
+                    [-hw, baseTop, -chd],
+                    [-chw, baseTop, -chd],
+                    [-chw, baseTop, chd],
+                    [-hw, baseTop, chd]
+                );
+                // Right strip
+                meshes.base.addQuad(
+                    [chw, baseTop, -chd],
+                    [hw, baseTop, -chd],
+                    [hw, baseTop, chd],
+                    [chw, baseTop, chd]
+                );
+                
+                // Four outer sides (full height)
+                meshes.base.addQuad([-hw, baseBottom, -hd], [hw, baseBottom, -hd], [hw, baseTop, -hd], [-hw, baseTop, -hd]);
+                meshes.base.addQuad([hw, baseBottom, hd], [-hw, baseBottom, hd], [-hw, baseTop, hd], [hw, baseTop, hd]);
+                meshes.base.addQuad([-hw, baseBottom, hd], [-hw, baseBottom, -hd], [-hw, baseTop, -hd], [-hw, baseTop, hd]);
+                meshes.base.addQuad([hw, baseBottom, -hd], [hw, baseBottom, hd], [hw, baseTop, hd], [hw, baseTop, -hd]);
+                
+                if (!flatMode && terrainEnabled) {
+                    // Terrain surface in center - water areas already flattened
+                    for (let i = 0; i < gs; i++) {
+                        for (let j = 0; j < gs; j++) {
+                            const p00 = terrainGrid[i][j], p01 = terrainGrid[i][j+1];
+                            const p10 = terrainGrid[i+1][j], p11 = terrainGrid[i+1][j+1];
+                            meshes.base.addQuad(
+                                [p00.x, p00.y, p00.z],
+                                [p01.x, p01.y, p01.z],
+                                [p11.x, p11.y, p11.z],
+                                [p10.x, p10.y, p10.z]
+                            );
+                        }
+                    }
+                    
+                    // Connect terrain edges to flat padding
+                    // Front edge (z = -chd)
+                    for (let j = 0; j < gs; j++) {
+                        meshes.base.addQuad(
+                            [terrainGrid[0][j].x, baseTop, -chd],
+                            [terrainGrid[0][j+1].x, baseTop, -chd],
+                            [terrainGrid[0][j+1].x, terrainGrid[0][j+1].y, terrainGrid[0][j+1].z],
+                            [terrainGrid[0][j].x, terrainGrid[0][j].y, terrainGrid[0][j].z]
+                        );
+                    }
+                    // Back edge (z = chd)
+                    for (let j = 0; j < gs; j++) {
+                        meshes.base.addQuad(
+                            [terrainGrid[gs][j].x, terrainGrid[gs][j].y, terrainGrid[gs][j].z],
+                            [terrainGrid[gs][j+1].x, terrainGrid[gs][j+1].y, terrainGrid[gs][j+1].z],
+                            [terrainGrid[gs][j+1].x, baseTop, chd],
+                            [terrainGrid[gs][j].x, baseTop, chd]
+                        );
+                    }
+                    // Left edge (x = -chw)
+                    for (let i = 0; i < gs; i++) {
+                        meshes.base.addQuad(
+                            [terrainGrid[i][0].x, terrainGrid[i][0].y, terrainGrid[i][0].z],
+                            [terrainGrid[i+1][0].x, terrainGrid[i+1][0].y, terrainGrid[i+1][0].z],
+                            [-chw, baseTop, terrainGrid[i+1][0].z],
+                            [-chw, baseTop, terrainGrid[i][0].z]
+                        );
+                    }
+                    // Right edge (x = chw)
+                    for (let i = 0; i < gs; i++) {
+                        meshes.base.addQuad(
+                            [chw, baseTop, terrainGrid[i][gs].z],
+                            [chw, baseTop, terrainGrid[i+1][gs].z],
+                            [terrainGrid[i+1][gs].x, terrainGrid[i+1][gs].y, terrainGrid[i+1][gs].z],
+                            [terrainGrid[i][gs].x, terrainGrid[i][gs].y, terrainGrid[i][gs].z]
+                        );
+                    }
+                } else {
+                    // Flat center
+                    meshes.base.addQuad(
+                        [-chw, baseTop, -chd],
+                        [chw, baseTop, -chd],
+                        [chw, baseTop, chd],
+                        [-chw, baseTop, chd]
+                    );
+                }
+            } else {
+                // No padding - original behavior
+                if (!flatMode && terrainEnabled) {
+                // Top surface (terrain) - water areas already flattened
+                for (let i = 0; i < gs; i++) {
+                    for (let j = 0; j < gs; j++) {
+                        const p00 = terrainGrid[i][j], p01 = terrainGrid[i][j+1];
+                        const p10 = terrainGrid[i+1][j], p11 = terrainGrid[i+1][j+1];
+                        meshes.base.addQuad(
+                            [p00.x, p00.y, p00.z],
+                            [p01.x, p01.y, p01.z],
+                            [p11.x, p11.y, p11.z],
+                            [p10.x, p10.y, p10.z]
+                        );
+                    }
+                }
+                
+                // Bottom surface (flat)
+                meshes.base.addQuad(
+                    [-hw, baseBottom, -hd],
+                    [-hw, baseBottom, hd],
+                    [hw, baseBottom, hd],
+                    [hw, baseBottom, -hd]
+                );
+                
+                // Four sides connecting terrain edge to bottom
+                // Front side (i = 0)
+                for (let j = 0; j < gs; j++) {
+                    const x0 = -hw + j * cw, x1 = -hw + (j + 1) * cw;
+                    meshes.base.addQuad(
+                        [x0, baseBottom, -hd],
+                        [x1, baseBottom, -hd],
+                        [terrainGrid[0][j+1].x, terrainGrid[0][j+1].y, terrainGrid[0][j+1].z],
+                        [terrainGrid[0][j].x, terrainGrid[0][j].y, terrainGrid[0][j].z]
+                    );
+                }
+                // Back side (i = gs)
+                for (let j = 0; j < gs; j++) {
+                    const x0 = -hw + j * cw, x1 = -hw + (j + 1) * cw;
+                    meshes.base.addQuad(
+                        [terrainGrid[gs][j].x, terrainGrid[gs][j].y, terrainGrid[gs][j].z],
+                        [terrainGrid[gs][j+1].x, terrainGrid[gs][j+1].y, terrainGrid[gs][j+1].z],
+                        [x1, baseBottom, hd],
+                        [x0, baseBottom, hd]
+                    );
+                }
+                // Left side (j = 0)
+                for (let i = 0; i < gs; i++) {
+                    const z0 = -hd + i * cd, z1 = -hd + (i + 1) * cd;
+                    meshes.base.addQuad(
+                        [terrainGrid[i][0].x, terrainGrid[i][0].y, terrainGrid[i][0].z],
+                        [terrainGrid[i+1][0].x, terrainGrid[i+1][0].y, terrainGrid[i+1][0].z],
+                        [-hw, baseBottom, z1],
+                        [-hw, baseBottom, z0]
+                    );
+                }
+                // Right side (j = gs)
+                for (let i = 0; i < gs; i++) {
+                    const z0 = -hd + i * cd, z1 = -hd + (i + 1) * cd;
+                    meshes.base.addQuad(
+                        [hw, baseBottom, z0],
+                        [hw, baseBottom, z1],
+                        [terrainGrid[i+1][gs].x, terrainGrid[i+1][gs].y, terrainGrid[i+1][gs].z],
+                        [terrainGrid[i][gs].x, terrainGrid[i][gs].y, terrainGrid[i][gs].z]
+                    );
+                }
+            } else {
+                // Flat base plate (no terrain)
+                // Bottom face
+                meshes.base.addQuad(
+                    [-hw, baseBottom, -hd],
+                    [-hw, baseBottom, hd],
+                    [hw, baseBottom, hd],
+                    [hw, baseBottom, -hd]
+                );
+                // Top face
+                meshes.base.addQuad(
+                    [-hw, baseTop, -hd],
+                    [hw, baseTop, -hd],
+                    [hw, baseTop, hd],
+                    [-hw, baseTop, hd]
+                );
+                // Four sides
+                meshes.base.addQuad([-hw, baseBottom, -hd], [hw, baseBottom, -hd], [hw, baseTop, -hd], [-hw, baseTop, -hd]);
+                meshes.base.addQuad([hw, baseBottom, hd], [-hw, baseBottom, hd], [-hw, baseTop, hd], [hw, baseTop, hd]);
+                meshes.base.addQuad([-hw, baseBottom, hd], [-hw, baseBottom, -hd], [-hw, baseTop, -hd], [-hw, baseTop, hd]);
+                meshes.base.addQuad([hw, baseBottom, -hd], [hw, baseBottom, hd], [hw, baseTop, hd], [hw, baseTop, -hd]);
+            }
+            }  // End of paddingMm === 0 block
+            
+            // ===== BUILDINGS =====
+            if (document.getElementById('layerBuildings').checked) {
+                modelData.buildings.forEach(b => {
+                    if (b.coords.length < 3) return;
+                    const clipped = clipPolygon(b.coords, selectedBounds);
+                    if (!clipped || clipped.length < 3) return;
+                    
+                    // Convert to footprint first
+                    let footprint = clipped.map(c => {
+                        const p = toLocal(c.lat, c.lng);
+                        return [p.x, -p.z];  // Negate z to match terrain grid
+                    });
+                    
+                    // Track which indices survive cleaning
+                    const cleanedIndices = [];
+                    const cleanedFootprint = [];
+                    
+                    for (let i = 0; i < footprint.length; i++) {
+                        const p = footprint[i];
+                        const last = cleanedFootprint[cleanedFootprint.length - 1];
+                        if (!last || Math.abs(p[0] - last[0]) > 1e-10 || Math.abs(p[1] - last[1]) > 1e-10) {
+                            cleanedFootprint.push(p);
+                            cleanedIndices.push(i);
+                        }
+                    }
+                    
+                    if (cleanedFootprint.length >= 2) {
+                        const first = cleanedFootprint[0];
+                        const last = cleanedFootprint[cleanedFootprint.length - 1];
+                        if (Math.abs(first[0] - last[0]) < 1e-10 && Math.abs(first[1] - last[1]) < 1e-10) {
+                            cleanedFootprint.pop();
+                            cleanedIndices.pop();
+                        }
+                    }
+                    
+                    footprint = cleanedFootprint;
+                    const n = footprint.length;
+                    if (n < 3) return;
+                    
+                    // Calculate elevations using correct indices
+                    const bottomY = cleanedIndices.map(idx => baseTop + elevMm(clipped[idx].lat, clipped[idx].lng));
+                    const maxElev = Math.max(...bottomY);
+                    const heightMm = Math.max(b.height * contentSf * heightBuildings, minWallMm);
+                    const topY = maxElev + heightMm;
+                    
+                    // Roof (top face) - FLAT
+                    for (let i = 1; i < n - 1; i++) {
+                        meshes.buildings.addTriangle(
+                            [footprint[0][0], topY, footprint[0][1]],
+                            [footprint[i][0], topY, footprint[i][1]],
+                            [footprint[i+1][0], topY, footprint[i+1][1]]
+                        );
+                    }
+                    
+                    // Bottom face (terrain-following) - reverse winding
+                    for (let i = 1; i < n - 1; i++) {
+                        meshes.buildings.addTriangle(
+                            [footprint[0][0], bottomY[0], footprint[0][1]],
+                            [footprint[i+1][0], bottomY[i+1], footprint[i+1][1]],
+                            [footprint[i][0], bottomY[i], footprint[i][1]]
+                        );
+                    }
+                    
+                    // Walls - connect varying bottom to flat top
+                    for (let i = 0; i < n; i++) {
+                        const next = (i + 1) % n;
+                        meshes.buildings.addQuad(
+                            [footprint[i][0], bottomY[i], footprint[i][1]],
+                            [footprint[next][0], bottomY[next], footprint[next][1]],
+                            [footprint[next][0], topY, footprint[next][1]],
+                            [footprint[i][0], topY, footprint[i][1]]
+                        );
+                    }
+                });
+            }
+            
+            // ===== ROADS =====
+            if (document.getElementById('layerRoads').checked) {
+                const roadHeight = Math.max(heightRoads, minWallMm);
+                
+                modelData.roads.forEach(r => {
+                    if (r.coords.length < 2) return;
+                    const clipped = clipLine(r.coords, selectedBounds);
+                    if (clipped.length < 2) return;
+                    
+                    const scaledWidth = r.width * contentSf;
+                    const halfW = Math.max(scaledWidth, minWallMm) / 2;
+                    
+                    const n = clipped.length;
+                    const left = [], right = [], yBase = [];
+                    
+                    clipped.forEach((c, i) => {
+                        const next = clipped[Math.min(i + 1, n - 1)];
+                        const prev = clipped[Math.max(i - 1, 0)];
+                        const p = toLocal(c.lat, c.lng);
+                        const pn = toLocal(next.lat, next.lng);
+                        const pp = toLocal(prev.lat, prev.lng);
+                        
+                        // Per-vertex elevation
+                        yBase.push(baseTop + elevMm(c.lat, c.lng));
+                        
+                        const dx = pn.x - pp.x, dz = pn.z - pp.z;
+                        const len = Math.sqrt(dx * dx + dz * dz) || 1;
+                        const px = -dz / len * halfW, pz = dx / len * halfW;
+                        
+                        // Negate z to match terrain grid convention
+                        left.push([p.x - px, -(p.z - pz)]);
+                        right.push([p.x + px, -(p.z + pz)]);
+                    });
+                    
+                    const h = roadHeight;
+                    
+                    // Top surface
+                    for (let i = 0; i < n - 1; i++) {
+                        const y0 = yBase[i], y1 = yBase[i + 1];
+                        meshes.roads.addQuad(
+                            [left[i][0], y0 + h, left[i][1]],
+                            [right[i][0], y0 + h, right[i][1]],
+                            [right[i+1][0], y1 + h, right[i+1][1]],
+                            [left[i+1][0], y1 + h, left[i+1][1]]
+                        );
+                    }
+                    
+                    // Bottom surface (reverse winding)
+                    for (let i = 0; i < n - 1; i++) {
+                        const y0 = yBase[i], y1 = yBase[i + 1];
+                        meshes.roads.addQuad(
+                            [left[i][0], y0, left[i][1]],
+                            [left[i+1][0], y1, left[i+1][1]],
+                            [right[i+1][0], y1, right[i+1][1]],
+                            [right[i][0], y0, right[i][1]]
+                        );
+                    }
+                    
+                    // Left wall
+                    for (let i = 0; i < n - 1; i++) {
+                        const y0 = yBase[i], y1 = yBase[i + 1];
+                        meshes.roads.addQuad(
+                            [left[i+1][0], y1, left[i+1][1]],
+                            [left[i][0], y0, left[i][1]],
+                            [left[i][0], y0 + h, left[i][1]],
+                            [left[i+1][0], y1 + h, left[i+1][1]]
+                        );
+                    }
+                    
+                    // Right wall
+                    for (let i = 0; i < n - 1; i++) {
+                        const y0 = yBase[i], y1 = yBase[i + 1];
+                        meshes.roads.addQuad(
+                            [right[i][0], y0, right[i][1]],
+                            [right[i+1][0], y1, right[i+1][1]],
+                            [right[i+1][0], y1 + h, right[i+1][1]],
+                            [right[i][0], y0 + h, right[i][1]]
+                        );
+                    }
+                    
+                    // Front cap
+                    const y0 = yBase[0];
+                    meshes.roads.addQuad(
+                        [left[0][0], y0, left[0][1]],
+                        [right[0][0], y0, right[0][1]],
+                        [right[0][0], y0 + h, right[0][1]],
+                        [left[0][0], y0 + h, left[0][1]]
+                    );
+                    
+                    // Back cap
+                    const yLast = yBase[n - 1];
+                    meshes.roads.addQuad(
+                        [right[n-1][0], yLast, right[n-1][1]],
+                        [left[n-1][0], yLast, left[n-1][1]],
+                        [left[n-1][0], yLast + h, left[n-1][1]],
+                        [right[n-1][0], yLast + h, right[n-1][1]]
+                    );
+                });
+            }
+            
+            // ===== GREEN AREAS =====
+            if (document.getElementById('layerGreen').checked) {
+                const greenHeight = Math.max(heightGreen, minWallMm);
+                
+                // Helper function to process a single green polygon
+                function processGreenPolygon(coords) {
+                    if (!coords || coords.length < 3) return;
+                    
+                    // === STEP 1: Densify boundary (points every ~10m real-world) ===
+                    const targetSpacingM = 10;
+                    const densified = [];
+                    
+                    for (let i = 0; i < coords.length; i++) {
+                        const curr = coords[i];
+                        const next = coords[(i + 1) % coords.length];
+                        
+                        densified.push(curr);
+                        
+                        const dLat = (next.lat - curr.lat) * metersPerDeg;
+                        const dLng = (next.lng - curr.lng) * metersPerDeg * cosLat;
+                        const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+                        
+                        if (dist > targetSpacingM) {
+                            const numSegments = Math.ceil(dist / targetSpacingM);
+                            for (let j = 1; j < numSegments; j++) {
+                                const t = j / numSegments;
+                                densified.push({
+                                    lat: curr.lat + t * (next.lat - curr.lat),
+                                    lng: curr.lng + t * (next.lng - curr.lng)
+                                });
+                            }
+                        }
+                    }
+                    
+                    if (densified.length < 3) return;
+                    
+                    // === STEP 2: Create flat coords for earcut (ring) ===
+                    const flatCoords = [];
+                    densified.forEach(c => {
+                        const p = toLocal(c.lat, c.lng);
+                        flatCoords.push(p.x, -p.z);  // Negate z to match terrain grid
+                    });
+                    
+                    // === STEP 3: Triangulate ring with earcut ===
+                    let triangleIndices;
+                    try {
+                        triangleIndices = earcut(flatCoords);
+                    } catch (e) {
+                        return;
+                    }
+                    if (!triangleIndices || triangleIndices.length < 3) return;
+                    
+                    // === STEP 4: Build vertices with lat/lng ===
+                    let vertices = densified.map(c => {
+                        const p = toLocal(c.lat, c.lng);
+                        return { x: p.x, z: -p.z, lat: c.lat, lng: c.lng };  // Negate z
+                    });
+                    let triangles = [];
+                    for (let i = 0; i < triangleIndices.length; i += 3) {
+                        triangles.push([triangleIndices[i], triangleIndices[i+1], triangleIndices[i+2]]);
+                    }
+                    
+                    // === STEP 5: Subdivide mesh 2 times ===
+                    for (let iter = 0; iter < 2; iter++) {
+                        const newTriangles = [];
+                        const edgeMidpoints = new Map();
+                        
+                        function getEdgeKey(i1, i2) {
+                            return i1 < i2 ? `${i1}-${i2}` : `${i2}-${i1}`;
+                        }
+                        
+                        function getMidpoint(i1, i2) {
+                            const key = getEdgeKey(i1, i2);
+                            if (edgeMidpoints.has(key)) return edgeMidpoints.get(key);
+                            
+                            const v1 = vertices[i1], v2 = vertices[i2];
+                            const midIdx = vertices.length;
+                            vertices.push({
+                                x: (v1.x + v2.x) / 2,
+                                z: (v1.z + v2.z) / 2,
+                                lat: (v1.lat + v2.lat) / 2,
+                                lng: (v1.lng + v2.lng) / 2
+                            });
+                            edgeMidpoints.set(key, midIdx);
+                            return midIdx;
+                        }
+                        
+                        triangles.forEach(tri => {
+                            const [i0, i1, i2] = tri;
+                            const m01 = getMidpoint(i0, i1);
+                            const m12 = getMidpoint(i1, i2);
+                            const m20 = getMidpoint(i2, i0);
+                            
+                            newTriangles.push([i0, m01, m20]);
+                            newTriangles.push([m01, i1, m12]);
+                            newTriangles.push([m20, m12, i2]);
+                            newTriangles.push([m01, m12, m20]);
+                        });
+                        
+                        triangles = newTriangles;
+                    }
+                    
+                    // === STEP 6: Build mesh with terrain-following TOP and BOTTOM ===
+                    const boundaryCount = densified.length;
+                    
+                    // Calculate all elevations - both top and bottom follow terrain
+                    const elevations = vertices.map(v => baseTop + elevMm(v.lat, v.lng));
+                    
+                    triangles.forEach(tri => {
+                        const v0 = vertices[tri[0]], v1 = vertices[tri[1]], v2 = vertices[tri[2]];
+                        const y0 = elevations[tri[0]];
+                        const y1 = elevations[tri[1]];
+                        const y2 = elevations[tri[2]];
+                        
+                        // Top face - follows terrain + greenHeight
+                        meshes.green.addTriangle(
+                            [v0.x, y0 + greenHeight, v0.z],
+                            [v1.x, y1 + greenHeight, v1.z],
+                            [v2.x, y2 + greenHeight, v2.z]
+                        );
+                        
+                        // Bottom face - terrain following (reversed winding)
+                        meshes.green.addTriangle(
+                            [v0.x, y0, v0.z],
+                            [v2.x, y2, v2.z],
+                            [v1.x, y1, v1.z]
+                        );
+                    });
+                    
+                    // Side walls from boundary - both top and bottom follow terrain
+                    for (let i = 0; i < boundaryCount; i++) {
+                        const curr = vertices[i];
+                        const next = vertices[(i + 1) % boundaryCount];
+                        const yCurr = elevations[i];
+                        const yNext = elevations[(i + 1) % boundaryCount];
+                        
+                        meshes.green.addQuad(
+                            [curr.x, yCurr, curr.z],
+                            [next.x, yNext, next.z],
+                            [next.x, yNext + greenHeight, next.z],
+                            [curr.x, yCurr + greenHeight, curr.z]
+                        );
+                    }
+                }
+                
+                // Process each green area with boolean subtraction against water
+                modelData.greenAreas.forEach(g => {
+                    if (!g.coords || g.coords.length < 3) return;
+                    const clipped = clipPolygon(g.coords, selectedBounds);
+                    if (!clipped || clipped.length < 3) return;
+                    
+                    // Boolean subtract water from green area
+                    const resultPolygons = subtractWaterFromPolygon(clipped);
+                    
+                    // Process each resulting polygon (may be multiple after subtraction)
+                    resultPolygons.forEach(polyCoords => {
+                        processGreenPolygon(polyCoords);
+                    });
+                });
+                
+                // Linear greenways (hedges, tree rows, grass strips) - terrain-following ribbons
+                // Helper to check if a point is in water (uses larger buffer for cutting)
+                function isPointInWater(lat, lng) {
+                    // Check water areas
+                    for (const w of modelData.waterAreas) {
+                        if (w.coords && pointInPolygon(lat, lng, w.coords)) return true;
+                    }
+                    // Check waterways - use LARGE buffer for cutting (2x visual width)
+                    for (const w of modelData.waterways) {
+                        if (!w.coords || w.coords.length < 2) continue;
+                        const riverHalfWidthDeg = (w.width || 10) * 2.0 / 2 / 111000;
+                        for (let k = 0; k < w.coords.length - 1; k++) {
+                            const c1 = w.coords[k], c2 = w.coords[k + 1];
+                            const dx = (c2.lng - c1.lng) * cosLat;
+                            const dy = c2.lat - c1.lat;
+                            const len2 = dx * dx + dy * dy;
+                            if (len2 < 1e-12) continue;
+                            const ptDx = (lng - c1.lng) * cosLat;
+                            const ptDy = lat - c1.lat;
+                            let t = (ptDx * dx + ptDy * dy) / len2;
+                            t = Math.max(0, Math.min(1, t));
+                            const distDx = ptDx - dx * t;
+                            const distDy = ptDy - dy * t;
+                            const distDeg = Math.sqrt(distDx * distDx / (cosLat * cosLat) + distDy * distDy);
+                            if (distDeg < riverHalfWidthDeg) return true;
+                        }
+                    }
+                    return false;
+                }
+                
+                modelData.greenways.forEach(g => {
+                    if (g.coords.length < 2) return;
+                    const clipped = clipLine(g.coords, selectedBounds);
+                    if (clipped.length < 2) return;
+                    
+                    const scaledWidth = g.width * contentSf;
+                    const halfW = Math.max(scaledWidth, minWallMm) / 2;
+                    const h = greenHeight;
+                    
+                    const n = clipped.length;
+                    const left = [], right = [], elevs = [], inWater = [];
+                    
+                    clipped.forEach((c, i) => {
+                        const next = clipped[Math.min(i + 1, n - 1)];
+                        const prev = clipped[Math.max(i - 1, 0)];
+                        
+                        const p = toLocal(c.lat, c.lng);
+                        const pn = toLocal(next.lat, next.lng);
+                        const pp = toLocal(prev.lat, prev.lng);
+                        
+                        // Negate z values to match terrain grid
+                        const pz = -p.z, pnz = -pn.z, ppz = -pp.z;
+                        
+                        const dx = pn.x - pp.x, dz = pnz - ppz;
+                        const len = Math.sqrt(dx * dx + dz * dz) || 1;
+                        const px = -dz / len * halfW, perpZ = dx / len * halfW;
+                        
+                        left.push([p.x - px, pz - perpZ]);
+                        right.push([p.x + px, pz + perpZ]);
+                        
+                        // Get terrain elevation at this point
+                        elevs.push(baseTop + elevMm(c.lat, c.lng));
+                        
+                        // Check if this point is in water
+                        inWater.push(isPointInWater(c.lat, c.lng));
+                    });
+                    
+                    // Top surface - follows terrain + height, SKIP segments in water
+                    for (let i = 0; i < n - 1; i++) {
+                        if (inWater[i] && inWater[i + 1]) continue; // Skip if both points in water
+                        const y0 = elevs[i], y1 = elevs[i + 1];
+                        meshes.green.addQuad(
+                            [left[i][0], y0 + h, left[i][1]],
+                            [right[i][0], y0 + h, right[i][1]],
+                            [right[i+1][0], y1 + h, right[i+1][1]],
+                            [left[i+1][0], y1 + h, left[i+1][1]]
+                        );
+                    }
+                    
+                    // Bottom surface - follows terrain, SKIP segments in water
+                    for (let i = 0; i < n - 1; i++) {
+                        if (inWater[i] && inWater[i + 1]) continue;
+                        const y0 = elevs[i], y1 = elevs[i + 1];
+                        meshes.green.addQuad(
+                            [left[i][0], y0, left[i][1]],
+                            [left[i+1][0], y1, left[i+1][1]],
+                            [right[i+1][0], y1, right[i+1][1]],
+                            [right[i][0], y0, right[i][1]]
+                        );
+                    }
+                    
+                    // Left side wall - follows terrain, SKIP segments in water
+                    for (let i = 0; i < n - 1; i++) {
+                        if (inWater[i] && inWater[i + 1]) continue;
+                        const y0 = elevs[i], y1 = elevs[i + 1];
+                        meshes.green.addQuad(
+                            [left[i][0], y0, left[i][1]],
+                            [left[i][0], y0 + h, left[i][1]],
+                            [left[i+1][0], y1 + h, left[i+1][1]],
+                            [left[i+1][0], y1, left[i+1][1]]
+                        );
+                    }
+                    
+                    // Right side wall - follows terrain, SKIP segments in water
+                    for (let i = 0; i < n - 1; i++) {
+                        if (inWater[i] && inWater[i + 1]) continue;
+                        const y0 = elevs[i], y1 = elevs[i + 1];
+                        meshes.green.addQuad(
+                            [right[i][0], y0, right[i][1]],
+                            [right[i+1][0], y1, right[i+1][1]],
+                            [right[i+1][0], y1 + h, right[i+1][1]],
+                            [right[i][0], y0 + h, right[i][1]]
+                        );
+                    }
+                    
+                    // Start cap - only if not in water
+                    if (!inWater[0]) {
+                        const y0 = elevs[0];
+                        meshes.green.addQuad(
+                            [left[0][0], y0, left[0][1]],
+                            [right[0][0], y0, right[0][1]],
+                            [right[0][0], y0 + h, right[0][1]],
+                            [left[0][0], y0 + h, left[0][1]]
+                        );
+                    }
+                    
+                    // End cap - only if not in water
+                    if (!inWater[n - 1]) {
+                        const yLast = elevs[n - 1];
+                        meshes.green.addQuad(
+                            [left[n-1][0], yLast, left[n-1][1]],
+                            [left[n-1][0], yLast + h, left[n-1][1]],
+                            [right[n-1][0], yLast + h, right[n-1][1]],
+                            [right[n-1][0], yLast, right[n-1][1]]
+                        );
+                    }
+                });
+            }
+            
+            // ===== WATER AREAS (lakes) - terrain-following =====
+            if (document.getElementById('layerWater').checked) {
+                const waterHeight = Math.max(heightWater, minWallMm);
+                
+                // Terrain-following water areas with densified boundary
+                modelData.waterAreas.forEach(w => {
+                    if (!w.coords || w.coords.length < 3) return;
+                    const clipped = clipPolygon(w.coords, selectedBounds);
+                    if (!clipped || clipped.length < 3) return;
+                    
+                    // === STEP 1: Densify boundary ===
+                    const targetSpacingM = 10;
+                    const densified = [];
+                    
+                    for (let i = 0; i < clipped.length; i++) {
+                        const curr = clipped[i];
+                        const next = clipped[(i + 1) % clipped.length];
+                        
+                        densified.push(curr);
+                        
+                        const dLat = (next.lat - curr.lat) * metersPerDeg;
+                        const dLng = (next.lng - curr.lng) * metersPerDeg * cosLat;
+                        const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+                        
+                        if (dist > targetSpacingM) {
+                            const numSegments = Math.ceil(dist / targetSpacingM);
+                            for (let j = 1; j < numSegments; j++) {
+                                const t = j / numSegments;
+                                densified.push({
+                                    lat: curr.lat + t * (next.lat - curr.lat),
+                                    lng: curr.lng + t * (next.lng - curr.lng)
+                                });
+                            }
+                        }
+                    }
+                    
+                    if (densified.length < 3) return;
+                    
+                    // === STEP 2: Create flat coords for earcut ===
+                    const flatCoords = [];
+                    densified.forEach(c => {
+                        const p = toLocal(c.lat, c.lng);
+                        flatCoords.push(p.x, -p.z);  // Negate z to match terrain grid
+                    });
+                    
+                    // === STEP 3: Triangulate ring ===
+                    let triangleIndices;
+                    try {
+                        triangleIndices = earcut(flatCoords);
+                    } catch (e) {
+                        return;
+                    }
+                    if (!triangleIndices || triangleIndices.length < 3) return;
+                    
+                    // === STEP 4: Build vertices ===
+                    let vertices = densified.map(c => {
+                        const p = toLocal(c.lat, c.lng);
+                        return { x: p.x, z: -p.z, lat: c.lat, lng: c.lng };  // Negate z
+                    });
+                    let triangles = [];
+                    for (let i = 0; i < triangleIndices.length; i += 3) {
+                        triangles.push([triangleIndices[i], triangleIndices[i+1], triangleIndices[i+2]]);
+                    }
+                    
+                    // === STEP 5: Subdivide mesh 2 times ===
+                    for (let iter = 0; iter < 2; iter++) {
+                        const newTriangles = [];
+                        const edgeMidpoints = new Map();
+                        
+                        function getEdgeKey(i1, i2) {
+                            return i1 < i2 ? `${i1}-${i2}` : `${i2}-${i1}`;
+                        }
+                        
+                        function getMidpoint(i1, i2) {
+                            const key = getEdgeKey(i1, i2);
+                            if (edgeMidpoints.has(key)) return edgeMidpoints.get(key);
+                            
+                            const v1 = vertices[i1], v2 = vertices[i2];
+                            const midIdx = vertices.length;
+                            vertices.push({
+                                x: (v1.x + v2.x) / 2,
+                                z: (v1.z + v2.z) / 2,
+                                lat: (v1.lat + v2.lat) / 2,
+                                lng: (v1.lng + v2.lng) / 2
+                            });
+                            edgeMidpoints.set(key, midIdx);
+                            return midIdx;
+                        }
+                        
+                        triangles.forEach(tri => {
+                            const [i0, i1, i2] = tri;
+                            const m01 = getMidpoint(i0, i1);
+                            const m12 = getMidpoint(i1, i2);
+                            const m20 = getMidpoint(i2, i0);
+                            
+                            newTriangles.push([i0, m01, m20]);
+                            newTriangles.push([m01, i1, m12]);
+                            newTriangles.push([m20, m12, i2]);
+                            newTriangles.push([m01, m12, m20]);
+                        });
+                        
+                        triangles = newTriangles;
+                    }
+                    
+                    // === STEP 6: Build mesh - water follows terrain like green areas ===
+                    const boundaryCount = densified.length;
+                    
+                    // Calculate elevations for each vertex - water follows terrain
+                    const elevations = vertices.map(v => baseTop + elevMm(v.lat, v.lng));
+                    
+                    triangles.forEach(tri => {
+                        const v0 = vertices[tri[0]], v1 = vertices[tri[1]], v2 = vertices[tri[2]];
+                        const y0 = elevations[tri[0]];
+                        const y1 = elevations[tri[1]];
+                        const y2 = elevations[tri[2]];
+                        
+                        // Top face - follows terrain + waterHeight
+                        meshes.water.addTriangle(
+                            [v0.x, y0 + waterHeight, v0.z],
+                            [v1.x, y1 + waterHeight, v1.z],
+                            [v2.x, y2 + waterHeight, v2.z]
+                        );
+                        
+                        // Bottom face - follows terrain (reversed winding)
+                        meshes.water.addTriangle(
+                            [v0.x, y0, v0.z],
+                            [v2.x, y2, v2.z],
+                            [v1.x, y1, v1.z]
+                        );
+                    });
+                    
+                    // Side walls - both top and bottom follow terrain
+                    for (let i = 0; i < boundaryCount; i++) {
+                        const curr = vertices[i];
+                        const next = vertices[(i + 1) % boundaryCount];
+                        const yCurr = elevations[i];
+                        const yNext = elevations[(i + 1) % boundaryCount];
+                        
+                        meshes.water.addQuad(
+                            [curr.x, yCurr, curr.z],
+                            [next.x, yNext, next.z],
+                            [next.x, yNext + waterHeight, next.z],
+                            [curr.x, yCurr + waterHeight, curr.z]
+                        );
+                    }
+                });
+                
+                // ===== WATERWAYS (rivers) - terrain-following like greenways =====
+                modelData.waterways.forEach(w => {
+                    if (w.coords.length < 2) return;
+                    const clipped = clipLine(w.coords, selectedBounds);
+                    if (clipped.length < 2) return;
+                    
+                    const scaledWidth = w.width * contentSf;
+                    const halfW = Math.max(scaledWidth, minWallMm) / 2;
+                    const h = waterHeight;
+                    
+                    const n = clipped.length;
+                    const left = [], right = [], elevs = [];
+                    
+                    clipped.forEach((c, i) => {
+                        const next = clipped[Math.min(i + 1, n - 1)];
+                        const prev = clipped[Math.max(i - 1, 0)];
+                        const p = toLocal(c.lat, c.lng);
+                        const pn = toLocal(next.lat, next.lng);
+                        const pp = toLocal(prev.lat, prev.lng);
+                        
+                        // Negate z values to match terrain grid
+                        const pz = -p.z, pnz = -pn.z, ppz = -pp.z;
+                        
+                        const dx = pn.x - pp.x, dz = pnz - ppz;
+                        const len = Math.sqrt(dx * dx + dz * dz) || 1;
+                        const px = -dz / len * halfW, perpZ = dx / len * halfW;
+                        
+                        left.push([p.x - px, pz - perpZ]);
+                        right.push([p.x + px, pz + perpZ]);
+                        
+                        // Get terrain elevation at this point
+                        elevs.push(baseTop + elevMm(c.lat, c.lng));
+                    });
+                    
+                    // Top surface - follows terrain + height
+                    for (let i = 0; i < n - 1; i++) {
+                        const y0 = elevs[i], y1 = elevs[i + 1];
+                        meshes.water.addQuad(
+                            [left[i][0], y0 + h, left[i][1]],
+                            [right[i][0], y0 + h, right[i][1]],
+                            [right[i+1][0], y1 + h, right[i+1][1]],
+                            [left[i+1][0], y1 + h, left[i+1][1]]
+                        );
+                    }
+                    
+                    // Bottom surface - follows terrain
+                    for (let i = 0; i < n - 1; i++) {
+                        const y0 = elevs[i], y1 = elevs[i + 1];
+                        meshes.water.addQuad(
+                            [left[i][0], y0, left[i][1]],
+                            [left[i+1][0], y1, left[i+1][1]],
+                            [right[i+1][0], y1, right[i+1][1]],
+                            [right[i][0], y0, right[i][1]]
+                        );
+                    }
+                    
+                    // Left wall - follows terrain
+                    for (let i = 0; i < n - 1; i++) {
+                        const y0 = elevs[i], y1 = elevs[i + 1];
+                        meshes.water.addQuad(
+                            [left[i+1][0], y1, left[i+1][1]],
+                            [left[i][0], y0, left[i][1]],
+                            [left[i][0], y0 + h, left[i][1]],
+                            [left[i+1][0], y1 + h, left[i+1][1]]
+                        );
+                    }
+                    
+                    // Right wall - follows terrain
+                    for (let i = 0; i < n - 1; i++) {
+                        const y0 = elevs[i], y1 = elevs[i + 1];
+                        meshes.water.addQuad(
+                            [right[i][0], y0, right[i][1]],
+                            [right[i+1][0], y1, right[i+1][1]],
+                            [right[i+1][0], y1 + h, right[i+1][1]],
+                            [right[i][0], y0 + h, right[i][1]]
+                        );
+                    }
+                    
+                    // Front cap
+                    const y0 = elevs[0];
+                    meshes.water.addQuad(
+                        [left[0][0], y0, left[0][1]],
+                        [right[0][0], y0, right[0][1]],
+                        [right[0][0], y0 + h, right[0][1]],
+                        [left[0][0], y0 + h, left[0][1]]
+                    );
+                    
+                    // Back cap
+                    const yLast = elevs[n - 1];
+                    meshes.water.addQuad(
+                        [right[n-1][0], yLast, right[n-1][1]],
+                        [left[n-1][0], yLast, left[n-1][1]],
+                        [left[n-1][0], yLast + h, left[n-1][1]],
+                        [right[n-1][0], yLast + h, right[n-1][1]]
+                    );
+                });
+            }
+            
+            // ===== BUILD 3MF XML with SEPARATE OBJECTS for each layer =====
+            let objectsXml = '';
+            let buildItemsXml = '';
+            let objectId = 1;
+            
+            for (const [name, mesh] of Object.entries(meshes)) {
+                if (mesh.isEmpty()) continue;
+                
+                let verticesXml = '';
+                for (let i = 0; i < mesh.vertices.length; i += 3) {
+                    verticesXml += `        <vertex x="${mesh.vertices[i].toFixed(4)}" y="${mesh.vertices[i+1].toFixed(4)}" z="${mesh.vertices[i+2].toFixed(4)}" />\n`;
+                }
+                
+                let trianglesXml = '';
+                for (let i = 0; i < mesh.triangles.length; i += 3) {
+                    trianglesXml += `        <triangle v1="${mesh.triangles[i]}" v2="${mesh.triangles[i+1]}" v3="${mesh.triangles[i+2]}" />\n`;
+                }
+                
+                objectsXml += `  <object id="${objectId}" type="model" name="${name}">
+    <mesh>
+      <vertices>
+${verticesXml}      </vertices>
+      <triangles>
+${trianglesXml}      </triangles>
+    </mesh>
+  </object>\n`;
+                
+                buildItemsXml += `  <item objectid="${objectId}" />\n`;
+                objectId++;
+            }
+            
+            const modelXml = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+${objectsXml}  </resources>
+  <build>
+${buildItemsXml}  </build>
+</model>`;
+            
+            const contentTypesXml = `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" />
+  <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml" />
+</Types>`;
+            
+            const relsXml = `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" />
+</Relationships>`;
+            
+            const zip = new JSZip();
+            zip.file('[Content_Types].xml', contentTypesXml);
+            zip.file('_rels/.rels', relsXml);
+            zip.file('3D/3dmodel.model', modelXml);
+            
+            const blob = await zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' });
+            console.log('Generated multicolor 3MF with', objectId - 1, 'separate objects');
+            return blob;
+        }
+        
+        // ========== UI ==========
+        function initUI() {
+            // Search
+            document.getElementById('search').addEventListener('keyup', async e => {
+                if (e.key !== 'Enter') return;
+                const q = e.target.value;
+                const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?access_token=${MAPBOX_TOKEN}&country=de`);
+                const data = await res.json();
+                if (data.features?.length) {
+                    const [lng, lat] = data.features[0].center;
+                    map.flyTo({ center: [lng, lat], zoom: 15 });
+                }
+            });
+            
+            // Quick buttons
+            document.querySelectorAll('.quick-btn').forEach(btn => {
+                btn.onclick = () => map.flyTo({
+                    center: [parseFloat(btn.dataset.lng), parseFloat(btn.dataset.lat)],
+                    zoom: 15
+                });
+            });
+            
+            // Layer height sliders
+            document.getElementById('sliderHeightBuildings').oninput = e => {
+                document.getElementById('valHeightBuildings').textContent = e.target.value + 'x';
+                if (selectedBounds) update3DPreview();
+            };
+            document.getElementById('sliderHeightRoads').oninput = e => {
+                document.getElementById('valHeightRoads').textContent = e.target.value + 'mm';
+                if (selectedBounds) update3DPreview();
+            };
+            document.getElementById('sliderHeightGreen').oninput = e => {
+                document.getElementById('valHeightGreen').textContent = e.target.value + 'mm';
+                if (selectedBounds) update3DPreview();
+            };
+            document.getElementById('sliderHeightWater').oninput = e => {
+                document.getElementById('valHeightWater').textContent = e.target.value + 'mm';
+                if (selectedBounds) update3DPreview();
+            };
+            document.getElementById('sliderBase').oninput = e => {
+                document.getElementById('valBase').textContent = e.target.value + 'mm';
+                if (selectedBounds) update3DPreview();
+            };
+            
+            // 3D Print settings
+            document.getElementById('sliderModelSize').oninput = e => {
+                document.getElementById('valModelSize').textContent = e.target.value + 'mm';
+            };
+            document.getElementById('sliderMinWall').oninput = e => {
+                document.getElementById('valMinWall').textContent = e.target.value + 'mm';
+            };
+            document.getElementById('sliderPadding').oninput = e => {
+                document.getElementById('valPadding').textContent = e.target.value + 'mm';
+                if (selectedBounds) update3DPreview();
+            };
+            
+            // Frame preset buttons
+            document.querySelectorAll('.frame-btn').forEach(btn => {
+                btn.onclick = () => {
+                    const wasActive = btn.classList.contains('active');
+                    document.querySelectorAll('.frame-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    
+                    const w = parseInt(btn.dataset.w);
+                    const h = parseInt(btn.dataset.h);
+                    
+                    if (w === 0) {
+                        // Free mode
+                        document.getElementById('freeSizeRow').style.display = 'block';
+                        document.getElementById('frameSizeDisplay').style.display = 'none';
+                    } else {
+                        // Fixed frame size
+                        document.getElementById('freeSizeRow').style.display = 'none';
+                        document.getElementById('frameSizeDisplay').style.display = 'block';
+                        document.getElementById('frameSizeText').textContent = `${w} × ${h} mm`;
+                    }
+                    
+                    // Clear existing selection when changing frame format (aspect ratio changes)
+                    if (!wasActive && selectedBounds) {
+                        draw.deleteAll();
+                        onDrawDelete();
+                        setStatus(`Rahmen ${w}×${h}mm gewählt. Bitte neu zeichnen.`, '');
+                    }
+                };
+            });
+            
+            // Layer toggles
+            ['layerBuildings', 'layerRoads', 'layerWater', 'layerGreen', 'layerTerrain', 'flatMode'].forEach(id => {
+                document.getElementById(id).onchange = () => {
+                    // Flat mode disables terrain
+                    if (id === 'flatMode' && document.getElementById('flatMode').checked) {
+                        document.getElementById('layerTerrain').checked = false;
+                    }
+                    if (id === 'layerTerrain' && document.getElementById('layerTerrain').checked) {
+                        document.getElementById('flatMode').checked = false;
+                    }
+                    if (selectedBounds) update3DPreview();
+                };
+            });
+            
+            // Generate
+            document.getElementById('generateBtn').onclick = async () => {
+                const btn = document.getElementById('generateBtn');
+                btn.disabled = true;
+                btn.innerHTML = '<div class="spinner"></div> Generiere...';
+                
+                try {
+                    generatedFiles.threemf = await generate3MF();
+                    
+                    btn.disabled = false;
+                    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> 3D-Modell generieren`;
+                    
+                    showModal();
+                } catch (err) {
+                    console.error(err);
+                    btn.disabled = false;
+                    btn.innerHTML = 'Fehler!';
+                }
+            };
+            
+            // Download
+            document.getElementById('downloadBtn').onclick = download;
+        }
+        
+        function setStatus(msg, type = '') {
+            const el = document.getElementById('status');
+            el.className = 'status ' + type;
+            el.querySelector('span').textContent = msg;
+        }
+        
+        function updateCounts() {
+            document.getElementById('countBuildings').textContent = modelData.buildings.length;
+            document.getElementById('countRoads').textContent = modelData.roads.length;
+            document.getElementById('countWater').textContent = modelData.waterAreas.length + modelData.waterways.length;
+            document.getElementById('countGreen').textContent = modelData.greenAreas.length + modelData.greenways.length;
+        }
+        
+        function calculateArea() {
+            const { west, east, south, north } = selectedBounds;
+            return (north - south) * 111 * (east - west) * 111 * Math.cos((south + north) / 2 * Math.PI / 180);
+        }
+        
+        function showModal() {
+            const info = document.getElementById('modalInfo');
+            let size = 0;
+            if (generatedFiles.threemf) {
+                size = Math.round(generatedFiles.threemf.byteLength / 1024);
+            }
+            const modelSize = document.getElementById('sliderModelSize').value;
+            info.innerHTML = `
+                <div class="modal-row"><span>Gebäude</span><span>${modelData.buildings.length}</span></div>
+                <div class="modal-row"><span>Straßen</span><span>${modelData.roads.length}</span></div>
+                <div class="modal-row"><span>Format</span><span>3MF</span></div>
+                <div class="modal-row"><span>Modellgröße</span><span>${modelSize}mm</span></div>
+                <div class="modal-row"><span>Dateigröße</span><span>~${size} KB</span></div>
+            `;
+            document.getElementById('modal').classList.add('show');
+        }
+        
+        function closeModal() {
+            document.getElementById('modal').classList.remove('show');
+        }
+        
+        function download() {
+            downloadBinary('citymodel.3mf', generatedFiles.threemf);
+            closeModal();
+        }
+        
+        function downloadBinary(name, buffer) {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([buffer], { type: 'application/octet-stream' }));
+            a.download = name;
+            a.click();
+        }
+        
+        // Start
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
