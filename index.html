@@ -674,6 +674,13 @@
                             <div class="layer-check">✓</div>
                         </label>
                         <label class="layer">
+                            <input type="checkbox" id="layerLanduse" checked>
+                            <div class="layer-color" style="background:#f2d9b3"></div>
+                            <span class="layer-name">Nutzflächen</span>
+                            <span class="layer-count" id="countLanduse">0</span>
+                            <div class="layer-check">✓</div>
+                        </label>
+                        <label class="layer">
                             <input type="checkbox" id="layerTerrain" checked>
                             <div class="layer-color" style="background:#a9845b"></div>
                             <span class="layer-name">Terrain (3D)</span>
@@ -846,7 +853,8 @@
             roads: { r: 0.4, g: 0.4, b: 0.4, hex: 0x666666 },
             water: { r: 0.3, g: 0.67, b: 0.97, hex: 0x4dabf7 },
             green: { r: 0.32, g: 0.81, b: 0.4, hex: 0x51cf66 },
-            terrain: { r: 0.66, g: 0.52, b: 0.36, hex: 0xa9845b }
+            terrain: { r: 0.66, g: 0.52, b: 0.36, hex: 0xa9845b },
+            landuse: { r: 0.95, g: 0.85, b: 0.70, hex: 0xf2d9b3 }
         };
         
         // Sutherland-Hodgman polygon clipping
@@ -1046,7 +1054,7 @@
             console.log('Processing layer intersections...');
             
             // Collect all higher-priority shapes for subtraction
-            // Priority: Buildings > Roads > Water > Green
+            // Priority: Buildings > Roads > Water > Green > Landuse
             
             // 1. Convert buildings to polygon list
             const buildingPolys = modelData.buildings
@@ -1096,7 +1104,29 @@
                 }
             }
             modelData.greenAreas = newGreenAreas;
-            
+
+            // Landuse areas: Lowest priority - subtract buildings, roads, water, AND green
+            console.log('Merging overlapping landuse areas...');
+            const landusePolys = modelData.landuseAreas
+                .filter(l => l.coords && l.coords.length >= 3)
+                .map(l => l.coords);
+            const mergedLandusePolys = unionPolygons(landusePolys);
+            console.log('Landuse areas merged:', landusePolys.length, '->', mergedLandusePolys.length);
+
+            // Subtract everything above landuse (buildings, roads, water, green)
+            const allAboveLanduse = [...buildingPolys, ...roadPolys, ...allWaterPolys, ...newGreenAreas.map(g => g.coords)];
+            const newLanduseAreas = [];
+            for (const landuseCoords of mergedLandusePolys) {
+                if (!landuseCoords || landuseCoords.length < 3) continue;
+                const results = subtractPolygons(landuseCoords, allAboveLanduse);
+                for (const r of results) {
+                    if (r.length >= 3) {
+                        newLanduseAreas.push({ coords: r });
+                    }
+                }
+            }
+            modelData.landuseAreas = newLanduseAreas;
+
             // Water areas: First MERGE overlapping water areas, then subtract buildings/roads
             console.log('Merging overlapping water areas...');
             const waterPolys = modelData.waterAreas
@@ -1123,6 +1153,7 @@
             
             console.log('Layer intersections processed:', {
                 greenAreas: modelData.greenAreas.length,
+                landuseAreas: modelData.landuseAreas.length,
                 waterAreas: modelData.waterAreas.length
             });
         }
@@ -1130,7 +1161,7 @@
         // ========== STATE ==========
         let map, draw;
         let selectedBounds = null;
-        let modelData = { buildings: [], roads: [], waterAreas: [], waterways: [], greenAreas: [], greenways: [] };
+        let modelData = { buildings: [], roads: [], waterAreas: [], waterways: [], greenAreas: [], greenways: [], landuseAreas: [] };
         let elevationGrid = [];
         let minElev = 0, maxElev = 0;
         let generatedFiles = {};
@@ -1362,7 +1393,7 @@
         
         function onDrawDelete() {
             selectedBounds = null;
-            modelData = { buildings: [], roads: [], waterAreas: [], waterways: [], greenAreas: [], greenways: [] };
+            modelData = { buildings: [], roads: [], waterAreas: [], waterways: [], greenAreas: [], greenways: [], landuseAreas: [] };
             setStatus('Zeichne einen Bereich auf der Karte', '');
             document.getElementById('statArea').textContent = '—';
             document.getElementById('statBuildings').textContent = '—';
@@ -1486,6 +1517,7 @@
             modelData.waterways = [];
             modelData.greenAreas = [];
             modelData.greenways = [];
+            modelData.landuseAreas = [];
             
             // Waterway widths based on type
             function getWaterwayWidth(type) {
@@ -1563,9 +1595,11 @@
                         modelData.waterways.push({ coords: coords, width: width, type: tags.waterway });
                     }
                 }
-                // Green - separate closed (areas) and open (ways/paths)
+                // Landuse areas - categorize by type
                 else if (tags.landuse) {
                     var greenTypes = ['grass', 'forest', 'meadow', 'park', 'garden', 'farmland', 'village_green', 'recreation_ground'];
+                    var landuseTypes = ['residential', 'retail', 'commercial', 'industrial'];
+
                     if (greenTypes.indexOf(tags.landuse) >= 0) {
                         if (isClosed && coords.length >= 3) {
                             modelData.greenAreas.push({ coords: coords });
@@ -1574,6 +1608,8 @@
                             var width = getGreenwayWidth(tags);
                             modelData.greenways.push({ coords: coords, width: width });
                         }
+                    } else if (landuseTypes.indexOf(tags.landuse) >= 0 && isClosed && coords.length >= 3) {
+                        modelData.landuseAreas.push({ coords: coords });
                     }
                 }
                 else if (tags.leisure) {
@@ -1597,7 +1633,8 @@
                 waterAreas: modelData.waterAreas.length,
                 waterways: modelData.waterways.length,
                 greenAreas: modelData.greenAreas.length,
-                greenways: modelData.greenways.length
+                greenways: modelData.greenways.length,
+                landuseAreas: modelData.landuseAreas.length
             });
             
             // Process boolean operations to remove overlapping areas
@@ -2107,7 +2144,162 @@
                     }
                 });
             }
-            
+
+            // Helper function to render flat landuse areas (no height, just terrain surface)
+            function renderFlatLanduseAreas(areas, color, layerCheckId) {
+                if (!document.getElementById(layerCheckId).checked) return;
+                const heightLanduse = 0.6; // 3 layers at 0.2mm
+
+                areas.forEach(area => {
+                    if (!area.coords || area.coords.length < 3) return;
+
+                    const clipped = clipPolygon(area.coords, selectedBounds);
+                    if (!clipped || clipped.length < 3) return;
+
+                    // Densify the boundary (add points every ~10m)
+                    const targetSpacingM = 10;
+                    const densified = [];
+
+                    for (let i = 0; i < clipped.length; i++) {
+                        const curr = clipped[i];
+                        const next = clipped[(i + 1) % clipped.length];
+
+                        densified.push(curr);
+
+                        // Calculate distance between points in meters
+                        const dLat = (next.lat - curr.lat) * metersPerDeg;
+                        const dLng = (next.lng - curr.lng) * metersPerDeg * cosLat;
+                        const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+
+                        if (dist > targetSpacingM) {
+                            const numSegments = Math.ceil(dist / targetSpacingM);
+                            for (let j = 1; j < numSegments; j++) {
+                                const t = j / numSegments;
+                                densified.push({
+                                    lat: curr.lat + t * (next.lat - curr.lat),
+                                    lng: curr.lng + t * (next.lng - curr.lng)
+                                });
+                            }
+                        }
+                    }
+
+                    if (densified.length < 3) return;
+
+                    // Create flat 2D coords for earcut
+                    const flatCoords = [];
+                    densified.forEach(c => {
+                        const p = toLocal(c.lat, c.lng);
+                        flatCoords.push(p.x, -p.z);
+                    });
+
+                    // Triangulate the ring with earcut
+                    let triangleIndices;
+                    try {
+                        triangleIndices = earcut(flatCoords);
+                    } catch (e) {
+                        return;
+                    }
+                    if (!triangleIndices || triangleIndices.length < 3) return;
+
+                    // Build vertices with lat/lng
+                    let vertices = densified.map(c => {
+                        const p = toLocal(c.lat, c.lng);
+                        return { x: p.x, z: -p.z, lat: c.lat, lng: c.lng };
+                    });
+                    let triangles = [];
+                    for (let i = 0; i < triangleIndices.length; i += 3) {
+                        triangles.push([triangleIndices[i], triangleIndices[i+1], triangleIndices[i+2]]);
+                    }
+
+                    // Subdivide mesh for better terrain following
+                    for (let iter = 0; iter < 2; iter++) {
+                        const newTriangles = [];
+                        const edgeMidpoints = new Map();
+
+                        function getEdgeKey(i1, i2) {
+                            return i1 < i2 ? `${i1}-${i2}` : `${i2}-${i1}`;
+                        }
+
+                        function getMidpoint(i1, i2) {
+                            const key = getEdgeKey(i1, i2);
+                            if (edgeMidpoints.has(key)) return edgeMidpoints.get(key);
+
+                            const v1 = vertices[i1], v2 = vertices[i2];
+                            const midIdx = vertices.length;
+                            vertices.push({
+                                x: (v1.x + v2.x) / 2,
+                                z: (v1.z + v2.z) / 2,
+                                lat: (v1.lat + v2.lat) / 2,
+                                lng: (v1.lng + v2.lng) / 2
+                            });
+                            edgeMidpoints.set(key, midIdx);
+                            return midIdx;
+                        }
+
+                        triangles.forEach(tri => {
+                            const [i0, i1, i2] = tri;
+                            const m01 = getMidpoint(i0, i1);
+                            const m12 = getMidpoint(i1, i2);
+                            const m20 = getMidpoint(i2, i0);
+
+                            newTriangles.push([i0, m01, m20]);
+                            newTriangles.push([m01, i1, m12]);
+                            newTriangles.push([m20, m12, i2]);
+                            newTriangles.push([m01, m12, m20]);
+                        });
+
+                        triangles = newTriangles;
+                    }
+
+                    // Sample elevation for each vertex
+                    const topVerts = [];
+                    const bottomVerts = [];
+                    vertices.forEach(v => {
+                        const y = elevPreview(v.lat, v.lng);
+                        topVerts.push(v.x, y + 0.01, v.z);  // Top at terrain surface
+                        bottomVerts.push(v.x, y - heightLanduse, v.z);  // Bottom goes down into terrain
+                    });
+
+                    const allVerts = [...topVerts, ...bottomVerts];
+                    const indices = [];
+                    const offset = vertices.length;
+
+                    // Top faces
+                    triangles.forEach(tri => {
+                        indices.push(tri[0], tri[1], tri[2]);
+                    });
+
+                    // Bottom faces (reversed winding)
+                    triangles.forEach(tri => {
+                        indices.push(offset + tri[0], offset + tri[2], offset + tri[1]);
+                    });
+
+                    // Side walls from original densified boundary
+                    // Note: topVerts (0 to vertices.length-1) are at terrain surface
+                    //       bottomVerts (offset to offset+vertices.length-1) go down
+                    for (let i = 0; i < densified.length; i++) {
+                        const curr = i;
+                        const next = (i + 1) % densified.length;
+                        // Connect bottom to top (winding: bottom curr, bottom next, top next, top curr)
+                        indices.push(offset + curr, offset + next, next);
+                        indices.push(offset + curr, next, curr);
+                    }
+
+                    const geo = new THREE.BufferGeometry();
+                    geo.setAttribute('position', new THREE.Float32BufferAttribute(allVerts, 3));
+                    geo.setIndex(indices);
+                    geo.computeVertexNormals();
+
+                    scene.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+                        color: color,
+                        side: THREE.DoubleSide
+                    })));
+                });
+            }
+
+            // Render flat landuse areas
+            renderFlatLanduseAreas(modelData.landuseAreas, COLORS.landuse.hex, 'layerLanduse');
+
             // Roads - extrude UP from terrain elevation
             if (document.getElementById('layerRoads').checked) {
                 modelData.roads.slice(0, 300).forEach(function(r) {
@@ -2610,7 +2802,8 @@
                 buildings: new ManifoldMesh(),
                 roads: new ManifoldMesh(),
                 green: new ManifoldMesh(),
-                water: new ManifoldMesh()
+                water: new ManifoldMesh(),
+                landuse: new ManifoldMesh()
             };
             
             // Full frame dimensions (including padding)
@@ -2759,7 +2952,25 @@
                     }
                 }
             }
-            
+
+            // Lower terrain grid points in landuse areas to create cutouts
+            if (modelData.landuseAreas && modelData.landuseAreas.length > 0) {
+                const landuseDepth = 0.6; // mm - depth of landuse cutout
+                for (let i = 0; i <= gs; i++) {
+                    for (let j = 0; j <= gs; j++) {
+                        const pt = terrainGrid[i][j];
+
+                        // Check if point is in any landuse area
+                        for (const area of modelData.landuseAreas) {
+                            if (area.coords && pointInPolygon(pt.lat, pt.lng, area.coords)) {
+                                pt.y -= landuseDepth; // Lower the terrain by 0.6mm
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
             // Helper: subtract water from a polygon using polygon-clipping
             function subtractWaterFromPolygon(coords) {
                 if (waterPolygonsForClipping.length === 0) return [coords];
@@ -3476,7 +3687,156 @@
                     }
                 });
             }
-            
+
+            // ===== FLAT LANDUSE AREAS (Residential, Retail, Commercial, Industrial) =====
+            // Process flat landuse areas - simpler approach matching green areas
+            if (document.getElementById('layerLanduse').checked) {
+                const flatHeight = 0.6; // 3 layers at 0.2mm
+
+                modelData.landuseAreas.forEach(area => {
+                    if (!area.coords || area.coords.length < 3) return;
+                    const coords = clipPolygon(area.coords, selectedBounds);
+                    if (!coords || coords.length < 3) return;
+
+                    // Densify boundary (points every ~10m real-world)
+                    const targetSpacingM = 10;
+                    const densified = [];
+
+                    for (let i = 0; i < coords.length; i++) {
+                        const curr = coords[i];
+                        const next = coords[(i + 1) % coords.length];
+
+                        densified.push(curr);
+
+                        const dLat = (next.lat - curr.lat) * metersPerDeg;
+                        const dLng = (next.lng - curr.lng) * metersPerDeg * cosLat;
+                        const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+
+                        if (dist > targetSpacingM) {
+                            const numSegments = Math.ceil(dist / targetSpacingM);
+                            for (let j = 1; j < numSegments; j++) {
+                                const t = j / numSegments;
+                                densified.push({
+                                    lat: curr.lat + t * (next.lat - curr.lat),
+                                    lng: curr.lng + t * (next.lng - curr.lng)
+                                });
+                            }
+                        }
+                    }
+
+                    if (densified.length < 3) return;
+
+                    // Create flat coords for earcut
+                    const flatCoords = [];
+                    densified.forEach(c => {
+                        const p = toLocal(c.lat, c.lng);
+                        flatCoords.push(p.x, -p.z);
+                    });
+
+                    // Triangulate
+                    let triangleIndices;
+                    try {
+                        triangleIndices = earcut(flatCoords);
+                    } catch (e) {
+                        console.warn('Earcut failed for landuse area:', e);
+                        return;
+                    }
+                    if (!triangleIndices || triangleIndices.length < 3) return;
+
+                    // Build vertices with lat/lng
+                    let vertices = densified.map(c => {
+                        const p = toLocal(c.lat, c.lng);
+                        return { x: p.x, z: -p.z, lat: c.lat, lng: c.lng };
+                    });
+                    let triangles = [];
+                    for (let i = 0; i < triangleIndices.length; i += 3) {
+                        triangles.push([triangleIndices[i], triangleIndices[i+1], triangleIndices[i+2]]);
+                    }
+
+                    // Subdivide mesh 2 times for better terrain following
+                    for (let iter = 0; iter < 2; iter++) {
+                        const newTriangles = [];
+                        const edgeMidpoints = new Map();
+
+                        function getEdgeKey(i1, i2) {
+                            return i1 < i2 ? `${i1}-${i2}` : `${i2}-${i1}`;
+                        }
+
+                        function getMidpoint(i1, i2) {
+                            const key = getEdgeKey(i1, i2);
+                            if (edgeMidpoints.has(key)) return edgeMidpoints.get(key);
+
+                            const v1 = vertices[i1], v2 = vertices[i2];
+                            const midIdx = vertices.length;
+                            vertices.push({
+                                x: (v1.x + v2.x) / 2,
+                                z: (v1.z + v2.z) / 2,
+                                lat: (v1.lat + v2.lat) / 2,
+                                lng: (v1.lng + v2.lng) / 2
+                            });
+                            edgeMidpoints.set(key, midIdx);
+                            return midIdx;
+                        }
+
+                        triangles.forEach(tri => {
+                            const [i0, i1, i2] = tri;
+                            const m01 = getMidpoint(i0, i1);
+                            const m12 = getMidpoint(i1, i2);
+                            const m20 = getMidpoint(i2, i0);
+
+                            newTriangles.push([i0, m01, m20]);
+                            newTriangles.push([m01, i1, m12]);
+                            newTriangles.push([m20, m12, i2]);
+                            newTriangles.push([m01, m12, m20]);
+                        });
+
+                        triangles = newTriangles;
+                    }
+
+                    // Build mesh with terrain-following TOP and BOTTOM
+                    const boundaryCount = densified.length;
+
+                    // Calculate all elevations
+                    const elevations = vertices.map(v => baseTop + elevMm(v.lat, v.lng));
+
+                    triangles.forEach(tri => {
+                        const v0 = vertices[tri[0]], v1 = vertices[tri[1]], v2 = vertices[tri[2]];
+                        const y0 = elevations[tri[0]];
+                        const y1 = elevations[tri[1]];
+                        const y2 = elevations[tri[2]];
+
+                        // Top face - at terrain surface
+                        meshes.landuse.addTriangle(
+                            [v0.x, y0, v0.z],
+                            [v1.x, y1, v1.z],
+                            [v2.x, y2, v2.z]
+                        );
+
+                        // Bottom face - goes down into terrain (reversed winding)
+                        meshes.landuse.addTriangle(
+                            [v0.x, y0 - flatHeight, v0.z],
+                            [v2.x, y2 - flatHeight, v2.z],
+                            [v1.x, y1 - flatHeight, v1.z]
+                        );
+                    });
+
+                    // Side walls from boundary - top at terrain, bottom goes down
+                    for (let i = 0; i < boundaryCount; i++) {
+                        const curr = vertices[i];
+                        const next = vertices[(i + 1) % boundaryCount];
+                        const yCurr = elevations[i];
+                        const yNext = elevations[(i + 1) % boundaryCount];
+
+                        meshes.landuse.addQuad(
+                            [curr.x, yCurr - flatHeight, curr.z],
+                            [next.x, yNext - flatHeight, next.z],
+                            [next.x, yNext, next.z],
+                            [curr.x, yCurr, curr.z]
+                        );
+                    }
+                });
+            }
+
             // ===== WATER AREAS (lakes) - terrain-following =====
             if (document.getElementById('layerWater').checked) {
                 const waterHeight = Math.max(heightWater, minWallMm);
@@ -3869,7 +4229,7 @@ ${buildItemsXml}  </build>
             });
             
             // Layer toggles
-            ['layerBuildings', 'layerRoads', 'layerWater', 'layerGreen', 'layerTerrain', 'flatMode'].forEach(id => {
+            ['layerBuildings', 'layerRoads', 'layerWater', 'layerGreen', 'layerLanduse', 'layerTerrain', 'flatMode'].forEach(id => {
                 document.getElementById(id).onchange = () => {
                     // Flat mode disables terrain
                     if (id === 'flatMode' && document.getElementById('flatMode').checked) {
@@ -3917,6 +4277,7 @@ ${buildItemsXml}  </build>
             document.getElementById('countRoads').textContent = modelData.roads.length;
             document.getElementById('countWater').textContent = modelData.waterAreas.length + modelData.waterways.length;
             document.getElementById('countGreen').textContent = modelData.greenAreas.length + modelData.greenways.length;
+            document.getElementById('countLanduse').textContent = modelData.landuseAreas.length;
         }
         
         function calculateArea() {
