@@ -4241,15 +4241,15 @@
                             [v2.x, y2, v2.z]
                         );
 
-                        // Bottom face - goes down into terrain (reversed winding)
+                        // Bottom face - goes down into terrain, clamped to baseBottom
                         meshes.landuse.addTriangle(
-                            [v0.x, y0 - flatHeight, v0.z],
-                            [v2.x, y2 - flatHeight, v2.z],
-                            [v1.x, y1 - flatHeight, v1.z]
+                            [v0.x, Math.max(baseBottom, y0 - flatHeight), v0.z],
+                            [v2.x, Math.max(baseBottom, y2 - flatHeight), v2.z],
+                            [v1.x, Math.max(baseBottom, y1 - flatHeight), v1.z]
                         );
                     });
 
-                    // Side walls from boundary - top at terrain, bottom goes down
+                    // Side walls from boundary - top at terrain, bottom goes down (clamped)
                     for (let i = 0; i < boundaryCount; i++) {
                         const curr = vertices[i];
                         const next = vertices[(i + 1) % boundaryCount];
@@ -4257,8 +4257,8 @@
                         const yNext = elevations[(i + 1) % boundaryCount];
 
                         meshes.landuse.addQuad(
-                            [curr.x, yCurr - flatHeight, curr.z],
-                            [next.x, yNext - flatHeight, next.z],
+                            [curr.x, Math.max(baseBottom, yCurr - flatHeight), curr.z],
+                            [next.x, Math.max(baseBottom, yNext - flatHeight), next.z],
                             [next.x, yNext, next.z],
                             [curr.x, yCurr, curr.z]
                         );
