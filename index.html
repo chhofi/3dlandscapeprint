@@ -454,91 +454,6 @@
         
         @keyframes spin { to { transform: rotate(360deg); } }
         
-        /* Modal */
-        .modal-bg {
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.85);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.2s;
-        }
-        
-        .modal-bg.show { opacity: 1; visibility: visible; }
-        
-        .modal {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 24px;
-            width: 90%;
-            max-width: 380px;
-        }
-        
-        .modal h2 {
-            font-size: 20px;
-            margin-bottom: 8px;
-        }
-        
-        .modal p {
-            color: var(--text-secondary);
-            font-size: 13px;
-            margin-bottom: 16px;
-        }
-        
-        .modal-info {
-            background: var(--bg-tertiary);
-            border-radius: 8px;
-            padding: 12px;
-            margin-bottom: 16px;
-            font-size: 12px;
-        }
-        
-        .modal-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 6px 0;
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .modal-row:last-child { border: none; }
-        
-        .modal-row span:last-child {
-            font-family: 'JetBrains Mono', monospace;
-            color: var(--accent);
-        }
-        
-        .modal-btns {
-            display: flex;
-            gap: 10px;
-        }
-        
-        .modal-btn {
-            flex: 1;
-            padding: 12px;
-            border-radius: 8px;
-            font-family: inherit;
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
-        }
-        
-        .modal-btn.secondary {
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            color: var(--text-primary);
-        }
-        
-        .modal-btn.primary {
-            background: var(--accent);
-            border: none;
-            color: var(--bg-primary);
-        }
-        
         /* Advanced toggle */
         .advanced-toggle {
             width: 100%;
@@ -986,17 +901,6 @@
         </div>
     </div>
     
-    <div class="modal-bg" id="modal">
-        <div class="modal">
-            <h2>🎉 Fertig!</h2>
-            <p>Dein 3D-Modell wurde erstellt.</p>
-            <div class="modal-info" id="modalInfo"></div>
-            <div class="modal-btns">
-                <button class="modal-btn secondary" onclick="closeModal()">Schließen</button>
-                <button class="modal-btn primary" id="downloadBtn">Herunterladen</button>
-            </div>
-        </div>
-    </div>
 
     <div class="loading-toast" id="loadingOverlay">
         <div class="spinner"></div>
@@ -4531,9 +4435,8 @@
             baseMaterialsXml += '  </basematerials>\n';
 
             let objectsXml = '';
-            let componentsXml = '';
+            let buildXml = '';
             let objectId = 2; // id=1 is basematerials
-            const parentId = 100;
 
             for (const [name, mesh] of Object.entries(meshes)) {
                 if (mesh.isEmpty()) continue;
@@ -4559,22 +4462,16 @@ ${trianglesXml}      </triangles>
     </mesh>
   </object>\n`;
 
-                componentsXml += `      <component objectid="${objectId}" />\n`;
+                buildXml += `    <item objectid="${objectId}" />\n`;
                 objectId++;
             }
-
-            objectsXml += `  <object id="${parentId}" type="model" name="citymodel">
-    <components>
-${componentsXml}    </components>
-  </object>\n`;
 
             const modelXml = `<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
   <resources>
 ${baseMaterialsXml}${objectsXml}  </resources>
   <build>
-  <item objectid="${parentId}" />
-  </build>
+${buildXml}  </build>
 </model>`;
             
             const contentTypesXml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -4777,7 +4674,7 @@ ${baseMaterialsXml}${objectsXml}  </resources>
                     btn.disabled = false;
                     btn.innerHTML = defaultContent;
 
-                    showModal();
+                    download();
                 } catch (err) {
                     console.error(err);
                     setStatus('Fehler bei der Generierung: ' + err.message, 'error');
@@ -4787,7 +4684,6 @@ ${baseMaterialsXml}${objectsXml}  </resources>
             };
             
             // Download
-            document.getElementById('downloadBtn').onclick = download;
         }
         
         function setStatus(msg, type = '') {
@@ -4809,31 +4705,9 @@ ${baseMaterialsXml}${objectsXml}  </resources>
             return (north - south) * 111 * (east - west) * 111 * Math.cos((south + north) / 2 * Math.PI / 180);
         }
         
-        function showModal() {
-            const info = document.getElementById('modalInfo');
-            let size = 0;
-            if (generatedFiles.threemf) {
-                size = Math.round(generatedFiles.threemf.byteLength / 1024);
-            }
-            const modelSize = document.getElementById('sliderModelSize').value;
-            info.innerHTML = `
-                <div class="modal-row"><span>Gebäude</span><span>${modelData.buildings.length}</span></div>
-                <div class="modal-row"><span>Straßen</span><span>${modelData.roads.length}</span></div>
-                <div class="modal-row"><span>Format</span><span>3MF</span></div>
-                <div class="modal-row"><span>Modellgröße</span><span>${modelSize}mm</span></div>
-                <div class="modal-row"><span>Dateigröße</span><span>~${size} KB</span></div>
-            `;
-            document.getElementById('modal').classList.add('show');
-        }
-        
-        function closeModal() {
-            document.getElementById('modal').classList.remove('show');
-        }
-        
         function download() {
             if (!generatedFiles.threemf) return;
             downloadBinary('citymodel.3mf', generatedFiles.threemf);
-            closeModal();
         }
         
         function downloadBinary(name, buffer) {
