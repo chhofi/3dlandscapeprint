@@ -1271,9 +1271,10 @@
             mapboxgl.accessToken = MAPBOX_TOKEN;
             
             const urlParams = new URLSearchParams(window.location.search);
-            const initLat = parseFloat(urlParams.get('lat')) || 51.1657;
-            const initLng = parseFloat(urlParams.get('lng')) || 10.4515;
-            const initZoom = parseFloat(urlParams.get('z')) || 5;
+            const savedView = JSON.parse(localStorage.getItem('map_view') || 'null');
+            const initLat = parseFloat(urlParams.get('lat')) || savedView?.lat || 51.1657;
+            const initLng = parseFloat(urlParams.get('lng')) || savedView?.lng || 10.4515;
+            const initZoom = parseFloat(urlParams.get('z')) || savedView?.zoom || 5;
 
             map = new mapboxgl.Map({
                 container: 'map',
@@ -1284,7 +1285,12 @@
             });
             
             map.addControl(new mapboxgl.NavigationControl(), 'top-right');
-            
+
+            map.on('moveend', () => {
+                const c = map.getCenter();
+                localStorage.setItem('map_view', JSON.stringify({ lat: c.lat, lng: c.lng, zoom: map.getZoom() }));
+            });
+
             // Get current frame aspect ratio (width/height)
             function getFrameAspectRatio() {
                 const activeBtn = document.querySelector('.frame-btn.active');
@@ -1459,14 +1465,16 @@
                     }
                 });
 
-                // Restore shared selection from URL params
+                // Restore selection from URL params or localStorage
                 const params = new URLSearchParams(window.location.search);
+                let restored = false;
                 if (params.has('s') && params.has('w') && params.has('n') && params.has('e')) {
                     const s = parseFloat(params.get('s'));
                     const w = parseFloat(params.get('w'));
                     const n = parseFloat(params.get('n'));
                     const e = parseFloat(params.get('e'));
                     if (!isNaN(s) && !isNaN(w) && !isNaN(n) && !isNaN(e)) {
+                        restored = true;
                         const feature = {
                             type: 'Feature',
                             geometry: {
@@ -1478,6 +1486,25 @@
                         draw.add(feature);
                         map.fitBounds([[w, s], [e, n]], { padding: 60 });
                         onDrawCreate();
+                    }
+                }
+                if (!restored) {
+                    const saved = localStorage.getItem('selection_bounds');
+                    if (saved) {
+                        try {
+                            const { south: s, west: w, north: n, east: e } = JSON.parse(saved);
+                            const feature = {
+                                type: 'Feature',
+                                geometry: {
+                                    type: 'Polygon',
+                                    coordinates: [[[w,s],[e,s],[e,n],[w,n],[w,s]]]
+                                },
+                                properties: {}
+                            };
+                            draw.add(feature);
+                            map.fitBounds([[w, s], [e, n]], { padding: 60 });
+                            onDrawCreate();
+                        } catch (e) {}
                     }
                 }
             });
@@ -1511,6 +1538,7 @@
             const bounds = boundsFromDraw();
             if (!bounds) return;
             selectedBounds = bounds;
+            localStorage.setItem('selection_bounds', JSON.stringify(bounds));
             document.getElementById('instructions').style.display = 'none';
             await loadAllData();
         }
@@ -1519,6 +1547,7 @@
             const bounds = boundsFromDraw();
             if (!bounds) return;
             selectedBounds = bounds;
+            localStorage.setItem('selection_bounds', JSON.stringify(bounds));
             document.getElementById('instructions').style.display = 'none';
 
             // If new bounds fit inside already-loaded data, skip Overpass
@@ -1553,6 +1582,7 @@
         function onDrawDelete() {
             selectedBounds = null;
             loadedBounds = null;
+            localStorage.removeItem('selection_bounds');
             modelData = { buildings: [], roads: [], waterAreas: [], waterways: [], greenAreas: [], greenways: [], landuseAreas: [] };
             setStatus('Zeichne einen Bereich auf der Karte', '');
             document.getElementById('statArea').textContent = '—';
