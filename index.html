@@ -3113,7 +3113,7 @@
             
             function elevMm(lat, lng) {
                 if (flatMode || !terrainEnabled) return 0;
-                return getElevationAt(lat, lng) * contentSf; // meters to mm
+                return Math.max(0, getElevationAt(lat, lng)) * contentSf; // meters to mm, clamped >= 0
             }
             
             // Use full frame dimensions for base, content dimensions for features
@@ -3387,7 +3387,7 @@
                         // Check if point is in any landuse area
                         for (const area of modelData.landuseAreas) {
                             if (area.coords && pointInPolygon(pt.lat, pt.lng, area.coords)) {
-                                pt.y -= landuseDepth; // Lower the terrain by 0.6mm
+                                pt.y = Math.max(baseTop, pt.y - landuseDepth);
                                 break;
                             }
                         }
