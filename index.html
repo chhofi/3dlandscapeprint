@@ -4520,6 +4520,20 @@
 
             for (const [name, mesh] of Object.entries(meshes)) {
                 if (mesh.isEmpty()) continue;
+
+                // Compute mesh volume to skip tiny objects that trigger
+                // slicer "Object too small" warnings (threshold ~8 mm³)
+                let meshVolume = 0;
+                for (let i = 0; i < mesh.triangles.length; i += 3) {
+                    const a = mesh.triangles[i], b = mesh.triangles[i+1], c = mesh.triangles[i+2];
+                    const ax = mesh.vertices[a*3], ay = mesh.vertices[a*3+1], az = mesh.vertices[a*3+2];
+                    const bx = mesh.vertices[b*3], by = mesh.vertices[b*3+1], bz = mesh.vertices[b*3+2];
+                    const cx = mesh.vertices[c*3], cy = mesh.vertices[c*3+1], cz = mesh.vertices[c*3+2];
+                    meshVolume += ax*(by*cz - bz*cy) + bx*(cy*az - cz*ay) + cx*(ay*bz - az*by);
+                }
+                meshVolume = Math.abs(meshVolume) / 6;
+                if (meshVolume < 10) continue; // skip objects smaller than 10 mm³
+
                 const pindex = materialNames.indexOf(name);
 
                 let verticesXml = '';
