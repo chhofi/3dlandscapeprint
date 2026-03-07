@@ -2151,43 +2151,51 @@
                 return getElevationAt(lat, lng) / 1000 * scale; // meters to scene units
             }
             
-            // Model dimensions
+            // Model dimensions (in scene units)
             const modelWidth = (east - west) * metersPerDeg * cosLat / 1000 * scale;
             const modelDepth = (north - south) * metersPerDeg / 1000 * scale;
-            
+
+            // Padding
+            const paddingMm = parseFloat(document.getElementById('sliderPadding').value);
+            const maxPadding = Math.min(modelWidth, modelDepth) * 0.45;
+            const pad = Math.min(paddingMm / 1000 * scale, maxPadding);
+            const contentW = modelWidth - 2 * pad;
+            const contentD = modelDepth - 2 * pad;
+
+            const hw = modelWidth / 2, hd = modelDepth / 2;
+            const chw = contentW / 2, chd = contentD / 2;
+
             // Base/Terrain mesh
             if (!flatMode && layerTerrainChecked) {
-                // Terrain mesh with elevation
+                // Terrain mesh with elevation — fits inside padding area
                 const gs = 32;
-                const hw = modelWidth / 2, hd = modelDepth / 2;
-                const cw = modelWidth / gs, cd = modelDepth / gs;
-                
+                const cw = contentW / gs, cd = contentD / gs;
+
                 const vertices = [];
                 const indices = [];
-                
+
                 // Top surface vertices with elevation
                 for (let i = 0; i <= gs; i++) {
                     for (let j = 0; j <= gs; j++) {
-                        const x = -hw + j * cw;
-                        const z = -hd + i * cd;
-                        // Reverse lat because ExtrudeGeometry + rotateX(-PI/2) flips Z axis
+                        const x = -chw + j * cw;
+                        const z = -chd + i * cd;
                         const lat = north - (north - south) * (i / gs);
                         const lng = west + (east - west) * (j / gs);
                         const y = elevPreview(lat, lng);
                         vertices.push(x, y, z);
                     }
                 }
-                
-                // Bottom surface vertices (flat)
+
+                // Bottom surface vertices (flat, full frame size)
                 const btmOffset = (gs + 1) * (gs + 1);
                 for (let i = 0; i <= gs; i++) {
                     for (let j = 0; j <= gs; j++) {
-                        const x = -hw + j * cw;
-                        const z = -hd + i * cd;
+                        const x = -chw + j * cw;
+                        const z = -chd + i * cd;
                         vertices.push(x, baseBottom, z);
                     }
                 }
-                
+
                 // Top surface faces
                 for (let i = 0; i < gs; i++) {
                     for (let j = 0; j < gs; j++) {
@@ -2196,7 +2204,7 @@
                         indices.push(idx, idx + gs + 2, idx + gs + 1);
                     }
                 }
-                
+
                 // Bottom surface faces (reverse winding)
                 for (let i = 0; i < gs; i++) {
                     for (let j = 0; j < gs; j++) {
@@ -2205,48 +2213,79 @@
                         indices.push(idx, idx + gs + 1, idx + gs + 2);
                     }
                 }
-                
-                // Side walls
-                // Front (i = 0)
+
+                // Side walls of terrain block
                 for (let j = 0; j < gs; j++) {
                     const t = j, b = btmOffset + j;
-                    indices.push(b, b + 1, t + 1);
-                    indices.push(b, t + 1, t);
+                    indices.push(b, b + 1, t + 1); indices.push(b, t + 1, t);
                 }
-                // Back (i = gs)
                 for (let j = 0; j < gs; j++) {
                     const t = gs * (gs + 1) + j, b = btmOffset + gs * (gs + 1) + j;
-                    indices.push(t, t + 1, b + 1);
-                    indices.push(t, b + 1, b);
+                    indices.push(t, t + 1, b + 1); indices.push(t, b + 1, b);
                 }
-                // Left (j = 0)
                 for (let i = 0; i < gs; i++) {
                     const t = i * (gs + 1), b = btmOffset + i * (gs + 1);
-                    indices.push(t, t + gs + 1, b + gs + 1);
-                    indices.push(t, b + gs + 1, b);
+                    indices.push(t, t + gs + 1, b + gs + 1); indices.push(t, b + gs + 1, b);
                 }
-                // Right (j = gs)
                 for (let i = 0; i < gs; i++) {
                     const t = i * (gs + 1) + gs, b = btmOffset + i * (gs + 1) + gs;
-                    indices.push(b, b + gs + 1, t + gs + 1);
-                    indices.push(b, t + gs + 1, t);
+                    indices.push(b, b + gs + 1, t + gs + 1); indices.push(b, t + gs + 1, t);
                 }
-                
+
                 const geo = new THREE.BufferGeometry();
                 geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
                 geo.setIndex(indices);
                 geo.computeVertexNormals();
-                
+
                 scene.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
                     color: 0x666655,
                     side: THREE.DoubleSide
                 })));
             } else {
-                // Flat base plate
-                const geo = new THREE.BoxGeometry(modelWidth, Math.abs(baseBottom - baseTop), modelDepth);
+                // Flat base plate (content area only)
+                const geo = new THREE.BoxGeometry(contentW, Math.abs(baseBottom - baseTop), contentD);
                 geo.translate(0, (baseTop + baseBottom) / 2, 0);
                 scene.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
                     color: 0x444444,
+                    side: THREE.DoubleSide
+                })));
+            }
+
+            // Padding border ring
+            if (pad > 0) {
+                const v = [], idx = [];
+                // 8 corner vertices of outer frame top + 8 of inner cutout top
+                // Outer top: 0-3, Inner top: 4-7
+                v.push(-hw, baseTop, -hd,  hw, baseTop, -hd,  hw, baseTop, hd,  -hw, baseTop, hd);   // 0,1,2,3
+                v.push(-chw, baseTop, -chd, chw, baseTop, -chd, chw, baseTop, chd, -chw, baseTop, chd); // 4,5,6,7
+                // Outer bottom: 8-11
+                v.push(-hw, baseBottom, -hd, hw, baseBottom, -hd, hw, baseBottom, hd, -hw, baseBottom, hd);
+
+                // Top ring (4 quads as 2 triangles each)
+                // Front strip: 0,1,5,4
+                idx.push(0,1,5, 0,5,4);
+                // Right strip: 1,2,6,5
+                idx.push(1,2,6, 1,6,5);
+                // Back strip: 2,3,7,6
+                idx.push(2,3,7, 2,7,6);
+                // Left strip: 3,0,4,7
+                idx.push(3,0,4, 3,4,7);
+
+                // Bottom face (full)
+                idx.push(8,10,9, 8,11,10);
+
+                // Outer sides
+                idx.push(8,9,1, 8,1,0);   // front
+                idx.push(9,10,2, 9,2,1);   // right
+                idx.push(10,11,3, 10,3,2); // back
+                idx.push(11,8,0, 11,0,3);  // left
+
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+                geo.setIndex(idx);
+                geo.computeVertexNormals();
+                scene.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+                    color: 0x555555,
                     side: THREE.DoubleSide
                 })));
             }
