@@ -4515,8 +4515,9 @@
             baseMaterialsXml += '  </basematerials>\n';
 
             let objectsXml = '';
-            let buildItemsXml = '';
+            let componentsXml = '';
             let objectId = 2; // id=1 is basematerials
+            const parentId = 100; // parent assembly object
 
             for (const [name, mesh] of Object.entries(meshes)) {
                 if (mesh.isEmpty()) continue;
@@ -4555,16 +4556,23 @@ ${trianglesXml}      </triangles>
     </mesh>
   </object>\n`;
 
-                buildItemsXml += `  <item objectid="${objectId}" />\n`;
+                componentsXml += `      <component objectid="${objectId}" />\n`;
                 objectId++;
             }
+
+            // Parent object that groups all layers as components (prevents multi-part dialog)
+            objectsXml += `  <object id="${parentId}" type="model" name="citymodel">
+    <components>
+${componentsXml}    </components>
+  </object>\n`;
 
             const modelXml = `<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
   <resources>
 ${baseMaterialsXml}${objectsXml}  </resources>
   <build>
-${buildItemsXml}  </build>
+  <item objectid="${parentId}" />
+  </build>
 </model>`;
             
             const contentTypesXml = `<?xml version="1.0" encoding="UTF-8"?>
