@@ -579,21 +579,24 @@
         }
 
         /* Share button */
+        .generate-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        .generate-row .gen-btn {
+            flex: 1;
+        }
+
         .share-btn {
-            width: 100%;
-            padding: 10px 14px;
-            margin-top: 12px;
-            background: var(--bg-tertiary);
+            padding: 0 14px;
+            background: var(--bg-primary);
             border: 1px solid var(--border);
-            border-radius: 6px;
-            color: var(--text-primary);
-            font-family: inherit;
-            font-size: 13px;
-            font-weight: 500;
+            border-radius: 8px;
+            color: var(--text-secondary);
             cursor: pointer;
             align-items: center;
             justify-content: center;
-            gap: 7px;
             transition: all 0.15s;
         }
 
@@ -604,7 +607,6 @@
 
         .share-btn.copied {
             border-color: var(--accent);
-            background: color-mix(in srgb, var(--accent) 10%, transparent);
             color: var(--accent);
         }
 
@@ -800,10 +802,6 @@
                             <div class="stat-label">Höhe Δ</div>
                         </div>
                     </div>
-                    <button class="share-btn" id="shareBtn" style="display:none;">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-                        Auswahl teilen
-                    </button>
                 </div>
 
                 <div class="section">
@@ -988,14 +986,19 @@
             </div>
 
             <div class="generate-area">
-                <button class="gen-btn" id="generateBtn" disabled>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="7 10 12 15 17 10"/>
-                        <line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                    3MF generieren
-                </button>
+                <div class="generate-row">
+                    <button class="gen-btn" id="generateBtn" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        3MF generieren
+                    </button>
+                    <button class="share-btn" id="shareBtn" style="display:none;" title="Auswahl teilen">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -4566,12 +4569,11 @@ ${buildItemsXml}  </build>
                 const shareUrl = url.toString();
                 navigator.clipboard.writeText(shareUrl).then(() => {
                     const btn = document.getElementById('shareBtn');
-                    const origContent = btn.cloneNode(true).childNodes;
+                    const orig = btn.firstElementChild;
                     btn.classList.add('copied');
-                    btn.textContent = '';
                     const check = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                    check.setAttribute('width', '15');
-                    check.setAttribute('height', '15');
+                    check.setAttribute('width', '16');
+                    check.setAttribute('height', '16');
                     check.setAttribute('viewBox', '0 0 24 24');
                     check.setAttribute('fill', 'none');
                     check.setAttribute('stroke', 'currentColor');
@@ -4579,12 +4581,25 @@ ${buildItemsXml}  </build>
                     const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
                     poly.setAttribute('points', '20 6 9 17 4 12');
                     check.appendChild(poly);
-                    btn.appendChild(check);
-                    btn.appendChild(document.createTextNode(' Link kopiert!'));
+                    btn.replaceChild(check, orig);
                     setTimeout(() => {
                         btn.classList.remove('copied');
-                        btn.textContent = '';
-                        Array.from(origContent).forEach(n => btn.appendChild(n));
+                        const share = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                        share.setAttribute('width', '16');
+                        share.setAttribute('height', '16');
+                        share.setAttribute('viewBox', '0 0 24 24');
+                        share.setAttribute('fill', 'none');
+                        share.setAttribute('stroke', 'currentColor');
+                        share.setAttribute('stroke-width', '2');
+                        const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                        p.setAttribute('d', 'M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8');
+                        const pl = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                        pl.setAttribute('points', '16 6 12 2 8 6');
+                        const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        ln.setAttribute('x1', '12'); ln.setAttribute('y1', '2');
+                        ln.setAttribute('x2', '12'); ln.setAttribute('y2', '15');
+                        share.append(p, pl, ln);
+                        btn.replaceChild(share, btn.firstElementChild);
                     }, 2000);
                 });
             };
