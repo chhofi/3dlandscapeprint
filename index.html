@@ -583,15 +583,14 @@
             width: 100%;
             padding: 10px 14px;
             margin-top: 12px;
-            background: var(--bg-primary);
+            background: var(--bg-tertiary);
             border: 1px solid var(--border);
             border-radius: 6px;
-            color: var(--text-secondary);
+            color: var(--text-primary);
             font-family: inherit;
             font-size: 13px;
             font-weight: 500;
             cursor: pointer;
-            display: flex;
             align-items: center;
             justify-content: center;
             gap: 7px;
@@ -600,7 +599,7 @@
 
         .share-btn:hover {
             border-color: var(--accent);
-            color: var(--text-primary);
+            color: var(--accent);
         }
 
         .share-btn.copied {
@@ -4567,23 +4566,25 @@ ${buildItemsXml}  </build>
                 const shareUrl = url.toString();
                 navigator.clipboard.writeText(shareUrl).then(() => {
                     const btn = document.getElementById('shareBtn');
+                    const origContent = btn.cloneNode(true).childNodes;
                     btn.classList.add('copied');
-                    btn.querySelector('span') || btn.childNodes;
-                    const orig = btn.textContent;
-                    btn.textContent = 'Link kopiert!';
+                    btn.textContent = '';
+                    const check = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                    check.setAttribute('width', '15');
+                    check.setAttribute('height', '15');
+                    check.setAttribute('viewBox', '0 0 24 24');
+                    check.setAttribute('fill', 'none');
+                    check.setAttribute('stroke', 'currentColor');
+                    check.setAttribute('stroke-width', '2');
+                    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                    poly.setAttribute('points', '20 6 9 17 4 12');
+                    check.appendChild(poly);
+                    btn.appendChild(check);
+                    btn.appendChild(document.createTextNode(' Link kopiert!'));
                     setTimeout(() => {
                         btn.classList.remove('copied');
                         btn.textContent = '';
-                        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                        svg.setAttribute('width', '14');
-                        svg.setAttribute('height', '14');
-                        svg.setAttribute('viewBox', '0 0 24 24');
-                        svg.setAttribute('fill', 'none');
-                        svg.setAttribute('stroke', 'currentColor');
-                        svg.setAttribute('stroke-width', '2');
-                        svg.innerHTML = '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>';
-                        btn.appendChild(svg);
-                        btn.appendChild(document.createTextNode(' Auswahl teilen'));
+                        Array.from(origContent).forEach(n => btn.appendChild(n));
                     }, 2000);
                 });
             };
